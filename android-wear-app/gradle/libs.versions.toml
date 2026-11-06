@@ -1,0 +1,15 @@
+[versions]
+agp = "8.6.0"
+kotlin = "2.0.20"
+composeBom = "2024.09.00"
+wearCompose = "1.4.0"
+watchface = "1.2.1"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.13.1" }
+watchface-complications-data-source = { group = "androidx.wear.watchface", name = "watchface-complications-data-source", version.ref = "watchface" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

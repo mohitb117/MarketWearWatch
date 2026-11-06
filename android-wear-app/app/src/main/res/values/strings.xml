@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Market Complications</string>
+    <string name="complication_sp500_label">S&amp;P 500 Index</string>
+    <string name="complication_nasdaq_label">Nasdaq 100 Index</string>
+    <string name="complication_dual_label">Dual Market (SPX + NDX)</string>
+    <string name="refresh">Refresh</string>
+    <string name="updating">Updating…</string>
+</resources>

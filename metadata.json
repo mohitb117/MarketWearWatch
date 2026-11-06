@@ -1,0 +1,6 @@
+{
+  "name": "IndexWear: Pixel Watch S&P 500 & Nasdaq Complications",
+  "description": "Clean, battery-optimized Android Wear OS complication provider and companion app for Google Pixel Watch to display live S&P 500 and Nasdaq 100 indices on any watch face.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
