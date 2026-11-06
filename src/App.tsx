@@ -170,19 +170,25 @@ export default function App() {
           <button
             onClick={() => setActiveTab('install')}
             className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              activeTab === 'install' ? 'text-white font-semibold' : 'hover:text-neutral-200'
+              activeTab === 'install' ? 'text-sky-400 font-semibold' : 'hover:text-neutral-200'
             }`}
           >
-            Pixel Watch 4 Setup
+            Personal App Library Setup
           </button>
         </nav>
 
         {/* Zone 3: 1 Primary Action */}
         <div className="flex items-center gap-3 shrink-0">
           <button
+            onClick={() => setActiveTab('install')}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-400 bg-sky-950/40 border border-sky-800/50 rounded-lg hover:bg-sky-900/40 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <span>Personal Library Guide</span>
+          </button>
+          <button
             onClick={handleQuickExport}
             disabled={isExporting}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-500 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-500 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 shadow-sm"
           >
             <Download className="w-3.5 h-3.5" />
             <span>{isExporting ? 'Exporting...' : 'Export Wear Project'}</span>
@@ -200,13 +206,15 @@ export default function App() {
               <span aria-hidden="true">·</span>
               <span>Wear OS 4 / 5</span>
               <span aria-hidden="true">·</span>
+              <span className="text-emerald-400 font-medium">$0.00 Cloud Cost (Free Endpoints)</span>
+              <span aria-hidden="true">·</span>
               <span>Personal App Library Ready</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
               S&amp;P 500 &amp; Nasdaq 100 Complications
             </h1>
             <p className="text-sm text-neutral-400 mt-1 max-w-2xl">
-              Clean, isolated Android Wear OS app providing complication data sources for Google Pixel Watch dials with zero background battery drain.
+              Clean, isolated Android Wear OS app providing complication data sources for Google Pixel Watch dials with zero background battery drain and no Google Cloud API charges.
             </p>
           </div>
 

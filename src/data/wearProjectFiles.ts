@@ -1126,5 +1126,96 @@ No Play Store developer account required:
    - **Dual Market (SPX + NDX)**
 6. Press the watch crown to save and exit.
 `
+  },
+  {
+    path: '.github/workflows/build-wear-bundle.yml',
+    name: 'build-wear-bundle.yml',
+    category: 'doc',
+    description: 'Automated GitHub Actions CI/CD to build the release Android App Bundle (.aab) and APK in the cloud for free.',
+    content: `name: Build Pixel Watch Bundle (AAB & APK)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile Wear OS Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+
+    - name: Make Gradlew Executable
+      run: chmod +x gradlew || true
+
+    - name: Build Android App Bundle (.aab)
+      run: ./gradlew bundleRelease --no-daemon --stacktrace
+
+    - name: Build Standalone APK (.apk)
+      run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+    - name: Upload Release AAB (For Google Play Personal Library)
+      uses: actions/upload-artifact@v4
+      with:
+        name: MarketWear-PixelWatch-Release-AAB
+        path: app/build/outputs/bundle/release/*.aab
+        retention-days: 30
+
+    - name: Upload Release APK (For Direct Sideloading)
+      uses: actions/upload-artifact@v4
+      with:
+        name: MarketWear-PixelWatch-Release-APK
+        path: app/build/outputs/apk/release/*.apk
+        retention-days: 30`
+  },
+  {
+    path: 'gradle/wrapper/gradle-wrapper.properties',
+    name: 'gradle-wrapper.properties',
+    category: 'gradle',
+    description: 'Gradle wrapper version specification (Gradle 8.9).',
+    content: `distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\\://services.gradle.org/distributions/gradle-8.9-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists`
+  },
+  {
+    path: 'app/proguard-rules.pro',
+    name: 'proguard-rules.pro',
+    category: 'gradle',
+    description: 'ProGuard/R8 rules preserving Wear OS complication provider services.',
+    content: `-keep class com.marketwear.indices.** { *; }
+-keep class androidx.wear.watchface.complications.** { *; }
+-keepclassmembers class * extends androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService {
+    <init>(...);
+}`
+  },
+  {
+    path: 'build_bundle.sh',
+    name: 'build_bundle.sh',
+    category: 'gradle',
+    description: 'One-click shell script to compile the release Android App Bundle (.aab) locally.',
+    content: `#!/bin/bash
+set -e
+
+echo "Building MarketWear Release App Bundle (.aab)..."
+chmod +x ./gradlew
+./gradlew bundleRelease
+
+echo "Done! Generated bundle is in app/build/outputs/bundle/release/"`
   }
 ];
