@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,25 +17,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
-import androidx.wear.compose.foundation.rotary.rotaryScrollable
 import androidx.wear.compose.material.Card
 import androidx.wear.compose.material.CardDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
@@ -79,11 +74,6 @@ fun MarketWearApp(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberScalingLazyListState()
-    val focusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
 
     Scaffold(
         timeText = { TimeText() },
@@ -93,14 +83,9 @@ fun MarketWearApp(
         ScalingLazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .rotaryScrollable(
-                    behavior = RotaryScrollableDefaults.behavior(scrollableState = listState),
-                    focusRequester = focusRequester
-                )
-                .focusRequester(focusRequester)
-                .focusable(),
+                .background(Color.Black),
             state = listState,
+            autoCentering = AutoCenteringParams(itemIndex = 1),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(top = 28.dp, bottom = 28.dp, start = 14.dp, end = 14.dp)
         ) {
@@ -171,15 +156,16 @@ fun MarketWearApp(
 fun IndexCard(quote: IndexQuote) {
     val isPositive = quote.change >= 0
     val trendColor = if (isPositive) Color(0xFF4CAF50) else Color(0xFFF44336)
+    val cardBackground = CardDefaults.cardBackgroundPainter(
+        startBackgroundColor = Color(0xFF1E1E1E),
+        endBackgroundColor = Color(0xFF1E1E1E)
+    )
 
     Card(
         onClick = { /* Tap */ },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        backgroundPainter = CardDefaults.cardBackgroundPainter(
-            startBackgroundColor = Color(0xFF1E1E1E),
-            endBackgroundColor = Color(0xFF1E1E1E)
-        )
+        backgroundPainter = cardBackground
     ) {
         Column(
             modifier = Modifier
