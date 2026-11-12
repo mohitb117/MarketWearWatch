@@ -1,5 +1,6 @@
 # MarketWear: Wear OS & Android Financial Market Ecosystem
 
+[![Live Showcase](https://img.shields.io/badge/Live%20Showcase-GitHub%20Pages-brightgreen.svg)](https://mohitb117.github.io/MarketWearWatch/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
 [![Wear OS](https://img.shields.io/badge/Wear%20OS-5.0%20%2F%20API%2034-blue.svg)](https://developer.android.com/wear)
 [![Jetpack Compose](https://img.shields.io/badge/Compose-Wear%20%26%20Mobile-green.svg)](https://developer.android.com/jetpack/compose)
@@ -8,6 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **MarketWear** is a multi-device financial tracking ecosystem built for **Google Pixel Watch (Wear OS)** and **Android Mobile (Companion & Glance Widget)**. It provides real-time and cached market intelligence—featuring the **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors**—with zero battery penalty, rotary crown navigation, watch face complications, and cross-device background synchronization.
+
+👉 **[Try the Interactive Web Showcase & Simulator](https://mohitb117.github.io/MarketWearWatch/)** directly in your browser.
 
 ---
 
