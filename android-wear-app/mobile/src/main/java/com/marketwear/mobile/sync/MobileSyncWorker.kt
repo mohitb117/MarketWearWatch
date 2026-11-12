@@ -1,6 +1,7 @@
 package com.marketwear.mobile.sync
 
 import android.content.Context
+import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -9,6 +10,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.marketwear.mobile.data.MobileMarketRepository
+import com.marketwear.mobile.widget.MarketGlanceWidget
 import java.util.concurrent.TimeUnit
 
 class MobileSyncWorker(
@@ -20,6 +22,11 @@ class MobileSyncWorker(
         return try {
             val repository = MobileMarketRepository.getInstance()
             val quotes = repository.fetchAllQuotes()
+            try {
+                MarketGlanceWidget().updateAll(applicationContext)
+            } catch (e: Exception) {
+                // Ignore widget update errors in background
+            }
             val syncManager = WearDataSyncManager(applicationContext)
             val success = syncManager.syncQuotesToWatch(quotes)
             if (success) Result.success() else Result.retry()

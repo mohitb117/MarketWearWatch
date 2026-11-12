@@ -1,10 +1,12 @@
 package com.marketwear.mobile.ui
 
 import android.app.Application
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.sync.WearDataSyncManager
+import com.marketwear.mobile.widget.MarketGlanceWidget
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +37,11 @@ class MobileViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.value = _uiState.value.copy(isSyncing = true, errorMessage = null)
             try {
                 val quotes = repository.fetchAllQuotes()
+                try {
+                    MarketGlanceWidget().updateAll(getApplication())
+                } catch (e: Exception) {
+                    // Ignore widget update errors if no widgets placed
+                }
                 val syncSuccess = syncManager.syncQuotesToWatch(quotes)
                 val isWatchConnected = syncManager.isWatchConnected()
 
