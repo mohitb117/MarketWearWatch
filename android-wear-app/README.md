@@ -1,5 +1,8 @@
 # MarketWear: S&P 500 & Nasdaq 100 Complications for Google Pixel Watch
 
+> **Looking for the full ecosystem architecture & diagrams?**  
+> See the [Root MarketWear README](../README.md) for the multi-module architecture, Wearable Data Layer sync protocol, 11 market sectors, Jetpack Glance widget, and Mermaid diagrams.
+
 A standalone, battery-efficient Wear OS application delivering live financial index quotes (S&P 500 ^GSPC and Nasdaq 100 ^NDX) directly to Google Pixel Watch dials via the official modern AndroidX WatchFace Complications API.
 
 ---
