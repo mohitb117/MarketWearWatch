@@ -20,4 +20,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "MarketWearIndices"
+include(":shared")
 include(":app")
+include(":mobile")
