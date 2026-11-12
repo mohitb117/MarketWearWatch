@@ -1,10 +1,14 @@
 package com.marketwear.indices.data
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.marketwear.indices.data.db.IndexQuoteEntity
+import com.marketwear.indices.data.db.MarketDatabase
+import com.marketwear.indices.sync.MarketSyncWorker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -13,15 +17,26 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Singleton repository responsible for fetching S&P 500 and Nasdaq 100 quotes.
- * Designed specifically for Wear OS battery constraints:
- * - Caches values in SharedPreferences so complications never block on network.
- * - Fast timeout (4 seconds) so watch never hangs if tethering is spotty.
+ * Repository responsible for managing market indices data using Room as the single source of truth.
+ * Ensures Unidirectional Data Flow (UDF) for UI and Complications.
  */
 class MarketRepository private constructor(private val context: Context) {
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("market_wear_cache", Context.MODE_PRIVATE)
+    private val db = MarketDatabase.getInstance(context)
+    private val dao = db.indexQuoteDao()
+
+    init {
+        // Automatically schedule 15-minute battery-conscious background WorkManager sync
+        MarketSyncWorker.schedulePeriodicSync(context)
+    }
+
+    val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
+        if (list.isEmpty()) {
+            listOf(getFallbackQuote("SPX"), getFallbackQuote("NDX"))
+        } else {
+            list.map { it.toDomainModel() }
+        }
+    }
 
     companion object {
         @Volatile
@@ -38,25 +53,50 @@ class MarketRepository private constructor(private val context: Context) {
 
     suspend fun getQuote(symbol: String, forceRefresh: Boolean = false): IndexQuote =
         withContext(Dispatchers.IO) {
-            val cached = loadFromCache(symbol)
+            val entity = dao.getQuote(symbol)
             val now = System.currentTimeMillis()
 
-            if (!forceRefresh && cached != null && (now - cached.lastUpdated < CACHE_EXPIRY_MS)) {
-                return@withContext cached
+            if (!forceRefresh && entity != null && (now - entity.lastUpdated < CACHE_EXPIRY_MS)) {
+                return@withContext entity.toDomainModel()
             }
 
             if (!isNetworkAvailable()) {
-                return@withContext cached ?: getFallbackQuote(symbol)
+                return@withContext entity?.toDomainModel() ?: getFallbackQuote(symbol)
             }
 
             try {
                 val fresh = fetchOnlineQuote(symbol)
-                saveToCache(symbol, fresh)
+                dao.insertOrUpdate(IndexQuoteEntity.fromDomainModel(fresh))
                 fresh
             } catch (e: Exception) {
-                cached ?: getFallbackQuote(symbol)
+                entity?.toDomainModel() ?: getFallbackQuote(symbol)
             }
         }
+
+    suspend fun refreshAllOnline(): List<IndexQuote> = withContext(Dispatchers.IO) {
+        if (!isNetworkAvailable()) {
+            return@withContext dao.getAllQuotes().map { it.toDomainModel() }
+        }
+
+        val symbols = listOf("SPX", "NDX")
+        val results = mutableListOf<IndexQuoteEntity>()
+
+        for (sym in symbols) {
+            try {
+                val quote = fetchOnlineQuote(sym)
+                results.add(IndexQuoteEntity.fromDomainModel(quote))
+            } catch (_: Exception) {
+                // Keep existing cached data on failure
+            }
+        }
+
+        if (results.isNotEmpty()) {
+            dao.insertOrUpdate(results)
+            MarketSyncWorker.triggerComplicationUpdates(context)
+        }
+
+        dao.getAllQuotes().map { it.toDomainModel() }
+    }
 
     private fun fetchOnlineQuote(symbol: String): IndexQuote {
         val yahooTicker = if (symbol == "SPX") "%5EGSPC" else "%5EIXIC"
@@ -71,7 +111,7 @@ class MarketRepository private constructor(private val context: Context) {
         conn.setRequestProperty("Accept", "application/json")
 
         if (conn.responseCode != 200) {
-            throw RuntimeException("HTTP error \${conn.responseCode}")
+            throw RuntimeException("HTTP error ${conn.responseCode}")
         }
 
         val reader = BufferedReader(InputStreamReader(conn.inputStream))
@@ -109,40 +149,6 @@ class MarketRepository private constructor(private val context: Context) {
         val network = cm.activeNetwork ?: return false
         val capabilities = cm.getNetworkCapabilities(network) ?: return false
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    }
-
-    private fun saveToCache(symbol: String, quote: IndexQuote) {
-        prefs.edit().apply {
-            putFloat("\${symbol}_price", quote.price.toFloat())
-            putFloat("\${symbol}_change", quote.change.toFloat())
-            putFloat("\${symbol}_pct", quote.percentChange.toFloat())
-            putFloat("\${symbol}_high", quote.dayHigh.toFloat())
-            putFloat("\${symbol}_low", quote.dayLow.toFloat())
-            putLong("\${symbol}_time", quote.lastUpdated)
-            apply()
-        }
-    }
-
-    private fun loadFromCache(symbol: String): IndexQuote? {
-        if (!prefs.contains("\${symbol}_price")) return null
-        val price = prefs.getFloat("\${symbol}_price", 0f).toDouble()
-        val change = prefs.getFloat("\${symbol}_change", 0f).toDouble()
-        val pct = prefs.getFloat("\${symbol}_pct", 0f).toDouble()
-        val high = prefs.getFloat("\${symbol}_high", 0f).toDouble()
-        val low = prefs.getFloat("\${symbol}_low", 0f).toDouble()
-        val time = prefs.getLong("\${symbol}_time", 0L)
-        val name = if (symbol == "SPX") "S&P 500" else "Nasdaq 100"
-
-        return IndexQuote(
-            symbol = symbol,
-            name = name,
-            price = price,
-            change = change,
-            percentChange = pct,
-            dayHigh = high,
-            dayLow = low,
-            lastUpdated = time
-        )
     }
 
     private fun getFallbackQuote(symbol: String): IndexQuote {

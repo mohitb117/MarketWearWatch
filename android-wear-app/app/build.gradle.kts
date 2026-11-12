@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -44,7 +45,7 @@ android {
 
 dependencies {
     // Official AndroidX Wear Watch Face Complications API
-    implementation("androidx.wear.watchface:watchface-complications-data-source:1.2.1")
+    implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
     implementation("androidx.wear.watchface:watchface-complications-data:1.2.1")
 
     // Wear OS UI & Jetpack Compose
@@ -57,6 +58,15 @@ dependencies {
     // Coroutines & Lifecycle
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
+
+    // Room Database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+
+    // WorkManager for background sync
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // Wear OS Standalone Hardware
     compileOnly("com.google.android.wearable:wearable:2.9.0")
