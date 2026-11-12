@@ -2,12 +2,13 @@ package com.marketwear.shared
 
 import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.IndexQuote
+import com.marketwear.shared.model.MarketRegistry
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class IndexQuoteSerializationTest {
 
@@ -32,6 +33,23 @@ class IndexQuoteSerializationTest {
         assertEquals("5,985", deserialized.formattedPoints)
         assertEquals("+42.15", deserialized.formattedChange)
         assertEquals("+0.71%", deserialized.formattedPercent)
+    }
+
+    @Test
+    fun testCompactFormatting() {
+        val sectorQuote = IndexQuote(
+            symbol = "^YH101",
+            name = "Basic Materials",
+            price = 2220463.0,
+            change = 34300.0,
+            percentChange = 1.57,
+            dayHigh = 2250000.0,
+            dayLow = 2190000.0,
+            lastUpdated = 1700000000000L
+        )
+        assertEquals("2.22M", sectorQuote.formattedCompactPoints)
+        assertEquals("+34.3k", sectorQuote.formattedCompactChange)
+        assertEquals(13, MarketRegistry.ALL_INSTRUMENTS.size)
     }
 
     @Test

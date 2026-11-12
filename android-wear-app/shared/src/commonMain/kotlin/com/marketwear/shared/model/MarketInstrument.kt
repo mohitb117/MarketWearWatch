@@ -1,7 +1,6 @@
 package com.marketwear.shared.model
 
-import android.annotation.SuppressLint
-import androidx.compose.runtime.Immutable
+import com.marketwear.shared.platform.currentTimeMillis
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -10,8 +9,6 @@ enum class InstrumentCategory {
     SECTOR
 }
 
-@SuppressLint("UnsafeOptInUsageError")
-@Immutable
 @Serializable
 data class MarketInstrument(
     val symbol: String,
@@ -54,7 +51,7 @@ object MarketRegistry {
     }
 
     fun getFallbackQuotes(): List<IndexQuote> {
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         return listOf(
             IndexQuote("SPX", "S&P 500", 5985.42, 22.84, 0.38, 6005.10, 5960.30, now, "INDEX"),
             IndexQuote("NDX", "Nasdaq 100", 21110.15, -45.20, -0.21, 21250.00, 21050.80, now, "INDEX"),
