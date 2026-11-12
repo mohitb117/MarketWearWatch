@@ -38,20 +38,20 @@
 - Produces: `MarketGlanceWidgetReceiver : GlanceAppWidgetReceiver`
 - Produces: `R.xml.market_widget_info`
 
-- [ ] **Step 1: Add Glance to `libs.versions.toml` and `mobile/build.gradle.kts`**
+- [x] **Step 1: Add Glance to `libs.versions.toml` and `mobile/build.gradle.kts`**
 Add `glance = "1.1.0"`, `glance-appwidget`, and `glance-material3`.
 
-- [ ] **Step 2: Create `market_widget_info.xml`**
+- [x] **Step 2: Create `market_widget_info.xml`**
 Define app widget provider configuration: `minWidth = 140dp`, `minHeight = 110dp`, `targetCellWidth = 3`, `targetCellHeight = 2`, `resizeMode = "horizontal|vertical"`.
 
-- [ ] **Step 3: Implement `MarketGlanceWidgetReceiver` and update manifest**
+- [x] **Step 3: Implement `MarketGlanceWidgetReceiver` and update manifest**
 Register receiver for `android.appwidget.action.APPWIDGET_UPDATE` with `<meta-data android:name="android.appwidget.provider" android:resource="@xml/market_widget_info" />`.
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 Run: `./gradlew :mobile:compileDebugKotlin`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add android-wear-app/gradle/libs.versions.toml android-wear-app/mobile/
 git commit -m "feat(widget): add Glance dependencies and widget provider configuration"
@@ -72,7 +72,7 @@ git commit -m "feat(widget): add Glance dependencies and widget provider configu
 - Produces: `MarketGlanceWidget.Content()` rendering S&P 500 and Nasdaq 100 rows matching watch aesthetic
 - Produces: Automatic call to `MarketGlanceWidget().updateAll(context)` upon sync
 
-- [ ] **Step 1: Implement `MarketGlanceWidget`**
+- [x] **Step 1: Implement `MarketGlanceWidget`**
 Extend `GlanceAppWidget`. In `provideGlance`, read quotes from `MobileMarketRepository.getInstance().quotes.value`.
 Render a dark card with rounded corners:
   - Header: "MarketWear" + last updated timestamp.
@@ -80,19 +80,19 @@ Render a dark card with rounded corners:
   - Nasdaq 100 row: points, change, and percentage.
   - Tap modifier: `actionStartActivity<MainActivity>()`.
 
-- [ ] **Step 2: Hook widget updates into background worker and ViewModel**
+- [x] **Step 2: Hook widget updates into background worker and ViewModel**
 In `MobileSyncWorker.doWork()`, call `MarketGlanceWidget().updateAll(applicationContext)` after quotes fetch.
 In `MobileViewModel.refreshAndSync()`, call `MarketGlanceWidget().updateAll(application)` on success.
 
-- [ ] **Step 3: Verify build and unit tests**
+- [x] **Step 3: Verify build and unit tests**
 Run: `./gradlew :mobile:testDebugUnitTest :mobile:assembleDebug`
 Expected: PASS
 
-- [ ] **Step 4: Install and verify on mobile device**
+- [x] **Step 4: Install and verify on mobile device**
 Run: `adb -s adb-RFCX80FBB1X-A6BjoN._adb-tls-connect._tcp install -r mobile/build/outputs/apk/debug/mobile-debug.apk`
 Expected: Success
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add android-wear-app/mobile/
 git commit -m "feat(widget): implement MarketGlanceWidget with watch-consistent dual index UI"
