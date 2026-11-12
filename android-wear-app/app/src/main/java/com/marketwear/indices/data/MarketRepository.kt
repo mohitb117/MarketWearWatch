@@ -9,6 +9,8 @@ import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
+import com.marketwear.shared.model.MarketInstrument
+import com.marketwear.shared.model.MarketRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -38,7 +40,7 @@ class MarketRepository private constructor(private val context: Context) {
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
-            listOf(getFallbackQuote("SPX"), getFallbackQuote("NDX"))
+            MarketRegistry.getFallbackQuotes()
         } else {
             list.map { it.toDomainModel() }
         }
@@ -102,12 +104,11 @@ class MarketRepository private constructor(private val context: Context) {
             return@withContext dao.getAllQuotes().map { it.toDomainModel() }
         }
 
-        val symbols = listOf("SPX", "NDX")
         val results = mutableListOf<IndexQuoteEntity>()
 
-        for (sym in symbols) {
+        for (inst in MarketRegistry.ALL_INSTRUMENTS) {
             try {
-                val quote = fetchOnlineQuote(sym)
+                val quote = fetchOnlineQuote(inst)
                 results.add(IndexQuoteEntity.fromDomainModel(quote))
             } catch (_: Exception) {
                 // Keep existing cached data on failure
@@ -122,9 +123,9 @@ class MarketRepository private constructor(private val context: Context) {
         dao.getAllQuotes().map { it.toDomainModel() }
     }
 
-    private fun fetchOnlineQuote(symbol: String): IndexQuote {
-        val yahooTicker = if (symbol == "SPX") "%5EGSPC" else "%5EIXIC"
-        val endpoint = "https://query1.finance.yahoo.com/v8/finance/chart/$yahooTicker?interval=1d&range=1d"
+    private fun fetchOnlineQuote(instrument: MarketInstrument): IndexQuote {
+        val encodedTicker = instrument.yahooTicker.replace("^", "%5E")
+        val endpoint = "https://query1.finance.yahoo.com/v8/finance/chart/$encodedTicker?interval=1d&range=1d"
 
         val url = URL(endpoint)
         val conn = url.openConnection() as HttpURLConnection
@@ -154,17 +155,16 @@ class MarketRepository private constructor(private val context: Context) {
         val change = regularMarketPrice - previousClose
         val percentChange = if (previousClose > 0) (change / previousClose) * 100.0 else 0.0
 
-        val name = if (symbol == "SPX") "S&P 500" else "Nasdaq 100"
-
         return IndexQuote(
-            symbol = symbol,
-            name = name,
+            symbol = instrument.symbol,
+            name = instrument.name,
             price = regularMarketPrice,
             change = change,
             percentChange = percentChange,
             dayHigh = dayHigh,
             dayLow = dayLow,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            category = if (instrument.isSector) "SECTOR" else "INDEX"
         )
     }
 
@@ -176,10 +176,7 @@ class MarketRepository private constructor(private val context: Context) {
     }
 
     private fun getFallbackQuote(symbol: String): IndexQuote {
-        return if (symbol == "SPX") {
-            IndexQuote("SPX", "S&P 500", 5985.40, 42.15, 0.71, 6010.50, 5940.20, System.currentTimeMillis())
-        } else {
-            IndexQuote("NDX", "Nasdaq 100", 21450.80, 230.10, 1.08, 21520.00, 21280.00, System.currentTimeMillis())
-        }
+        return MarketRegistry.getFallbackQuotes().find { it.symbol == symbol }
+            ?: IndexQuote(symbol, symbol, 1000.0, 0.0, 0.0, 1000.0, 1000.0, System.currentTimeMillis())
     }
 }

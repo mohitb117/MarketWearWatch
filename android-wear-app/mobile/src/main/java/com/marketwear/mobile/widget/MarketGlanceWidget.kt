@@ -10,6 +10,8 @@ import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -27,6 +29,7 @@ import androidx.glance.unit.ColorProvider
 import com.marketwear.mobile.MainActivity
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.shared.model.IndexQuote
+import com.marketwear.shared.model.MarketRegistry
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,28 +38,7 @@ class MarketGlanceWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val quotes = MobileMarketRepository.getInstance().quotes.value.ifEmpty {
-            listOf(
-                IndexQuote(
-                    symbol = "SPX",
-                    name = "S&P 500",
-                    price = 5985.42,
-                    change = 22.84,
-                    percentChange = 0.38,
-                    dayHigh = 6005.10,
-                    dayLow = 5960.30,
-                    lastUpdated = System.currentTimeMillis()
-                ),
-                IndexQuote(
-                    symbol = "NDX",
-                    name = "Nasdaq 100",
-                    price = 21110.15,
-                    change = -45.20,
-                    percentChange = -0.21,
-                    dayHigh = 21250.00,
-                    dayLow = 21050.80,
-                    lastUpdated = System.currentTimeMillis()
-                )
-            )
+            MarketRegistry.getFallbackQuotes()
         }
 
         provideContent {
@@ -74,6 +56,8 @@ private fun WidgetContent(quotes: List<IndexQuote>) {
     } else {
         "--"
     }
+
+    val (indices, sectors) = quotes.partition { it.symbol == "SPX" || it.symbol == "NDX" }
 
     Column(
         modifier = GlanceModifier
@@ -108,12 +92,33 @@ private fun WidgetContent(quotes: List<IndexQuote>) {
 
         Spacer(modifier = GlanceModifier.height(6.dp))
 
-        // Index Cards
-        quotes.take(2).forEachIndexed { index, quote ->
-            if (index > 0) {
-                Spacer(modifier = GlanceModifier.height(6.dp))
+        // Scrollable List: Major Indices + Sector Levels
+        LazyColumn(
+            modifier = GlanceModifier.fillMaxSize()
+        ) {
+            items(indices) { quote ->
+                IndexItem(quote = quote)
+                Spacer(modifier = GlanceModifier.height(4.dp))
             }
-            IndexItem(quote = quote)
+
+            if (sectors.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Sectors",
+                        style = TextStyle(
+                            color = ColorProvider(Color(0xFF9E9E9E)),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = GlanceModifier.padding(top = 4.dp, bottom = 4.dp)
+                    )
+                }
+
+                items(sectors) { quote ->
+                    IndexItem(quote = quote)
+                    Spacer(modifier = GlanceModifier.height(4.dp))
+                }
+            }
         }
     }
 }

@@ -32,6 +32,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +51,11 @@ fun MobileDashboardScreen(
     viewModel: MobileViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Memoized partition before LazyColumn
+    val (indices, sectors) = remember(uiState.quotes) {
+        uiState.quotes.partition { it.symbol == "SPX" || it.symbol == "NDX" }
+    }
 
     Scaffold(
         topBar = {
@@ -137,9 +143,25 @@ fun MobileDashboardScreen(
                 )
             }
 
-            items(uiState.quotes, key = { it.symbol }) { quote ->
+            items(indices, key = { it.symbol }) { quote ->
                 IndexMetricCard(quote = quote)
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (sectors.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "US Market Sectors",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+                    )
+                }
+
+                items(sectors, key = { it.symbol }) { quote ->
+                    IndexMetricCard(quote = quote)
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
             }
 
             uiState.errorMessage?.let { error ->

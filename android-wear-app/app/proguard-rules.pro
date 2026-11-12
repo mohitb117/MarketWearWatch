@@ -4,3 +4,14 @@
 -keepclassmembers class * extends androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService {
     <init>(...);
 }
+
+# Kotlin Serialization & Shared models
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-keep class com.marketwear.shared.model.** { *; }
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <fields>;
+}
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <init>(...);
+}
+-keepclassmembers class * extends kotlinx.serialization.internal.GeneratedSerializer { *; }

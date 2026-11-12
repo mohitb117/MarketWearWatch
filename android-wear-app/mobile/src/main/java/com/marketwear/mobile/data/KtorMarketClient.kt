@@ -1,6 +1,9 @@
 package com.marketwear.mobile.data
 
 import com.marketwear.shared.model.IndexQuote
+import com.marketwear.shared.model.InstrumentCategory
+import com.marketwear.shared.model.MarketInstrument
+import com.marketwear.shared.model.MarketRegistry
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
@@ -10,8 +13,10 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
@@ -21,9 +26,21 @@ import kotlinx.serialization.json.jsonPrimitive
 class KtorMarketClient(
     private val client: HttpClient = createDefaultHttpClient()
 ) {
+
     suspend fun fetchQuote(symbol: String): IndexQuote {
-        val yahooTicker = if (symbol == "SPX") "%5EGSPC" else "%5EIXIC"
-        val endpoint = "https://query1.finance.yahoo.com/v8/finance/chart/$yahooTicker?interval=1d&range=1d"
+        val instrument = MarketRegistry.findBySymbol(symbol)
+            ?: MarketInstrument(
+                symbol = symbol,
+                yahooTicker = symbol,
+                name = symbol,
+                category = if (MarketRegistry.isSector(symbol)) InstrumentCategory.SECTOR else InstrumentCategory.INDEX
+            )
+        return fetchQuote(instrument)
+    }
+
+    suspend fun fetchQuote(instrument: MarketInstrument): IndexQuote {
+        val encodedTicker = instrument.yahooTicker.replace("^", "%5E")
+        val endpoint = "https://query1.finance.yahoo.com/v8/finance/chart/$encodedTicker?interval=1d&range=1d"
 
         val response = client.get(endpoint) {
             header("User-Agent", "Mozilla/5.0 (Android; MarketWear Mobile)")
@@ -35,10 +52,22 @@ class KtorMarketClient(
         }
 
         val bodyText = response.bodyAsText()
-        return parseResponse(symbol, bodyText)
+        return parseResponse(instrument, bodyText)
     }
 
-    private fun parseResponse(symbol: String, jsonString: String): IndexQuote {
+    suspend fun fetchAllQuotes(): List<IndexQuote> = coroutineScope {
+        MarketRegistry.ALL_INSTRUMENTS.map { instrument ->
+            async {
+                try {
+                    fetchQuote(instrument)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    private fun parseResponse(instrument: MarketInstrument, jsonString: String): IndexQuote {
         val json = Json { ignoreUnknownKeys = true }
         val root = json.parseToJsonElement(jsonString).jsonObject
         val chart = root["chart"]?.jsonObject ?: throw IllegalArgumentException("Missing 'chart' in response")
@@ -63,17 +92,17 @@ class KtorMarketClient(
 
         val change = regularMarketPrice - previousClose
         val percentChange = if (previousClose > 0) (change / previousClose) * 100.0 else 0.0
-        val name = if (symbol == "SPX") "S&P 500" else "Nasdaq 100"
 
         return IndexQuote(
-            symbol = symbol,
-            name = name,
+            symbol = instrument.symbol,
+            name = instrument.name,
             price = regularMarketPrice,
             change = change,
             percentChange = percentChange,
             dayHigh = dayHigh,
             dayLow = dayLow,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            category = if (instrument.isSector) "SECTOR" else "INDEX"
         )
     }
 
