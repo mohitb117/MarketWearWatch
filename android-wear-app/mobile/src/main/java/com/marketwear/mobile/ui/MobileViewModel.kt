@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 class MobileViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = MobileMarketRepository()
+    private val repository = MobileMarketRepository.getInstance()
     private val syncManager = WearDataSyncManager(application)
 
     private val _uiState = MutableStateFlow(MobileMarketUiState())
@@ -42,12 +42,13 @@ class MobileViewModel(application: Application) : AndroidViewModel(application) 
                     quotes = quotes,
                     isSyncing = false,
                     isWatchConnected = isWatchConnected,
-                    lastSyncedTimestamp = System.currentTimeMillis()
+                    lastSyncedTimestamp = if (syncSuccess) System.currentTimeMillis() else _uiState.value.lastSyncedTimestamp,
+                    errorMessage = if (!syncSuccess) "Watch sync failed (watch may be offline)" else null
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isSyncing = false,
-                    errorMessage = e.message ?: "Failed to sync market quotes"
+                    errorMessage = e.message ?: "Failed to fetch market quotes"
                 )
             }
         }

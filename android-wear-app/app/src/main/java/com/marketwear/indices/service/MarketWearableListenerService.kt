@@ -9,14 +9,11 @@ import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MarketWearableListenerService : WearableListenerService() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val db by lazy { MarketDatabase.getInstance(applicationContext) }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
@@ -26,7 +23,9 @@ class MarketWearableListenerService : WearableListenerService() {
                 if (uri.path == WearConstants.PATH_MARKET_QUOTES) {
                     val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
 
-                    serviceScope.launch {
+                    // Run synchronously on background binder thread so WakeLock is held
+                    // until database insert and complication updates complete
+                    runBlocking(Dispatchers.IO) {
                         val entities = mutableListOf<IndexQuoteEntity>()
 
                         // Extract SPX

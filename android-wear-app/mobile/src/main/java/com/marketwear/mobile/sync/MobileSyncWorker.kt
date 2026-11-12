@@ -18,11 +18,11 @@ class MobileSyncWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val repository = MobileMarketRepository()
+            val repository = MobileMarketRepository.getInstance()
             val quotes = repository.fetchAllQuotes()
             val syncManager = WearDataSyncManager(applicationContext)
-            syncManager.syncQuotesToWatch(quotes)
-            Result.success()
+            val success = syncManager.syncQuotesToWatch(quotes)
+            if (success) Result.success() else Result.retry()
         } catch (e: Exception) {
             Result.retry()
         }

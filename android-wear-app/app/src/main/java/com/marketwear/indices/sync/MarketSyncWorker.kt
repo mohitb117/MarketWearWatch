@@ -25,12 +25,12 @@ class MarketSyncWorker(
     override suspend fun doWork(): Result {
         val db = MarketDatabase.getInstance(applicationContext)
         val quotes = db.indexQuoteDao().getAllQuotes()
-        val latestUpdate = quotes.maxOfOrNull { it.lastUpdated } ?: 0L
         val now = System.currentTimeMillis()
 
-        // Staleness guard: If data is fresh (<30 min, kept updated by phone DataClient),
-        // skip direct network calls completely to preserve watch battery.
-        if (latestUpdate > 0L && (now - latestUpdate < 30 * 60 * 1000L)) {
+        // Staleness guard: Check that ALL required indices (SPX & NDX) are present and fresh (<30 min)
+        val isAllFresh = quotes.size >= 2 && quotes.all { (now - it.lastUpdated) < 30 * 60 * 1000L }
+
+        if (isAllFresh) {
             triggerComplicationUpdates(applicationContext)
             return Result.success()
         }

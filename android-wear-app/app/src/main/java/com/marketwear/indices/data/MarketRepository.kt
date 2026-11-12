@@ -67,7 +67,7 @@ class MarketRepository private constructor(private val context: Context) {
      * If phone is available, request refresh via Wearable Data Layer.
      * If phone is unavailable, fall back to direct watch network fetch.
      */
-    suspend fun refreshWithPhoneFallback() = withContext(Dispatchers.IO) {
+    suspend fun refreshWithPhoneFallback(): Unit = withContext(Dispatchers.IO) {
         val phoneNode = getConnectedPhoneNode()
         if (phoneNode != null) {
             try {
