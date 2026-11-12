@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MarketWear Unified Instrument & Protocol Contract",
+  "version": "1.0.0",
+  "protocol": {
+    "dataPathQuotes": "/market/quotes",
+    "pathRequestRefresh": "/market/request_refresh",
+    "capabilityWatch": "marketwear_watch_app",
+    "capabilityPhone": "marketwear_phone_app",
+    "keySyncTimestamp": "sync_timestamp",
+    "keyQuotesPayload": "quotes_payload"
+  },
+  "instruments": [
+    {
+      "symbol": "SPX",
+      "yahooTicker": "^GSPC",
+      "name": "S&P 500",
+      "category": "INDEX",
+      "icon": "ic_sp500",
+      "fallback": {
+        "price": 5985.42,
+        "change": 22.84,
+        "percentChange": 0.38,
+        "dayHigh": 6005.10,
+        "dayLow": 5960.30
+      }
+    },
+    {
+      "symbol": "NDX",
+      "yahooTicker": "^NDX",
+      "name": "Nasdaq 100",
+      "category": "INDEX",
+      "icon": "ic_nasdaq",
+      "fallback": {
+        "price": 21110.15,
+        "change": -45.20,
+        "percentChange": -0.21,
+        "dayHigh": 21250.00,
+        "dayLow": 21050.80
+      }
+    },
+    {
+      "symbol": "^YH101",
+      "yahooTicker": "^YH101",
+      "name": "Basic Materials",
+      "category": "SECTOR",
+      "icon": "ic_sector_materials",
+      "fallback": {
+        "price": 2220463.0,
+        "change": 34300.0,
+        "percentChange": 1.57,
+        "dayHigh": 2250000.0,
+        "dayLow": 2190000.0
+      }
+    },
+    {
+      "symbol": "^YH102",
+      "yahooTicker": "^YH102",
+      "name": "Consumer Cyclical",
+      "category": "SECTOR",
+      "icon": "ic_sector_cyclical",
+      "fallback": {
+        "price": 1850120.0,
+        "change": 12400.0,
+        "percentChange": 0.67,
+        "dayHigh": 1870000.0,
+        "dayLow": 1830000.0
+      }
+    },
+    {
+      "symbol": "^YH103",
+      "yahooTicker": "^YH103",
+      "name": "Financial Services",
+      "category": "SECTOR",
+      "icon": "ic_sector_financial",
+      "fallback": {
+        "price": 1420500.0,
+        "change": -8200.0,
+        "percentChange": -0.57,
+        "dayHigh": 1440000.0,
+        "dayLow": 1410000.0
+      }
+    },
+    {
+      "symbol": "^YH104",
+      "yahooTicker": "^YH104",
+      "name": "Real Estate",
+      "category": "SECTOR",
+      "icon": "ic_sector_realestate",
+      "fallback": {
+        "price": 512300.0,
+        "change": 2100.0,
+        "percentChange": 0.41,
+        "dayHigh": 520000.0,
+        "dayLow": 508000.0
+      }
+    },
+    {
+      "symbol": "^YH205",
+      "yahooTicker": "^YH205",
+      "name": "Consumer Defensive",
+      "category": "SECTOR",
+      "icon": "ic_sector_defensive",
+      "fallback": {
+        "price": 980400.0,
+        "change": -1500.0,
+        "percentChange": -0.15,
+        "dayHigh": 990000.0,
+        "dayLow": 975000.0
+      }
+    },
+    {
+      "symbol": "^YH206",
+      "yahooTicker": "^YH206",
+      "name": "Healthcare",
+      "category": "SECTOR",
+      "icon": "ic_sector_healthcare",
+      "fallback": {
+        "price": 1650300.0,
+        "change": 8900.0,
+        "percentChange": 0.54,
+        "dayHigh": 1670000.0,
+        "dayLow": 1640000.0
+      }
+    },
+    {
+      "symbol": "^YH207",
+      "yahooTicker": "^YH207",
+      "name": "Utilities",
+      "category": "SECTOR",
+      "icon": "ic_sector_utilities",
+      "fallback": {
+        "price": 420800.0,
+        "change": 1100.0,
+        "percentChange": 0.26,
+        "dayHigh": 425000.0,
+        "dayLow": 418000.0
+      }
+    },
+    {
+      "symbol": "^YH308",
+      "yahooTicker": "^YH308",
+      "name": "Communication Services",
+      "category": "SECTOR",
+      "icon": "ic_sector_communication",
+      "fallback": {
+        "price": 1280900.0,
+        "change": 14500.0,
+        "percentChange": 1.14,
+        "dayHigh": 1295000.0,
+        "dayLow": 1270000.0
+      }
+    },
+    {
+      "symbol": "^YH309",
+      "yahooTicker": "^YH309",
+      "name": "Energy",
+      "category": "SECTOR",
+      "icon": "ic_sector_energy",
+      "fallback": {
+        "price": 890200.0,
+        "change": -6400.0,
+        "percentChange": -0.71,
+        "dayHigh": 905000.0,
+        "dayLow": 885000.0
+      }
+    },
+    {
+      "symbol": "^YH310",
+      "yahooTicker": "^YH310",
+      "name": "Industrials",
+      "category": "SECTOR",
+      "icon": "ic_sector_industrials",
+      "fallback": {
+        "price": 1750600.0,
+        "change": 9300.0,
+        "percentChange": 0.53,
+        "dayHigh": 1770000.0,
+        "dayLow": 1740000.0
+      }
+    },
+    {
+      "symbol": "^YH311",
+      "yahooTicker": "^YH311",
+      "name": "Technology",
+      "category": "SECTOR",
+      "icon": "ic_sector_technology",
+      "fallback": {
+        "price": 27007258.0,
+        "change": 290900.0,
+        "percentChange": 1.09,
+        "dayHigh": 27300000.0,
+        "dayLow": 26800000.0
+      }
+    }
+  ]
+}

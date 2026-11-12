@@ -3,21 +3,36 @@ import {
   INITIAL_MARKET_STATE,
   MarketState,
   calculateMarketStatus,
+  IndexQuote,
 } from './data/marketData';
 import {
   PixelWatch4Simulator,
   ComplicationSlotId,
   ComplicationContent,
 } from './components/PixelWatch4Simulator';
+import { MarketGlanceWidgetPreview } from './components/MarketGlanceWidgetPreview';
+import { MobileCompanionPreview } from './components/MobileCompanionPreview';
 import { MarketIndicesStrip } from './components/MarketIndicesStrip';
 import { ComplicationConfigurator } from './components/ComplicationConfigurator';
 import { AndroidCodeViewer } from './components/AndroidCodeViewer';
 import { InstallationGuide } from './components/InstallationGuide';
 import { generateWearOsProjectZip, downloadBlob } from './utils/zipExport';
-import { Download, Watch, Shield, Radio, CheckCircle2 } from 'lucide-react';
+import {
+  Download,
+  Watch,
+  Shield,
+  Smartphone,
+  Layers,
+  Sparkles,
+  RotateCw,
+  Cpu,
+  CheckCircle2,
+} from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'simulator' | 'config' | 'source' | 'install'>('simulator');
+  const [activeSurface, setActiveSurface] = useState<'watch' | 'widget' | 'mobile'>('watch');
+
   const [marketState, setMarketState] = useState<MarketState>(() => {
     const { status, statusText } = calculateMarketStatus();
     return {
@@ -51,46 +66,46 @@ export default function App() {
 
   const simulateTick = () => {
     setMarketState((prev) => {
-      // Small realistic market fluctuation between -0.15% and +0.15%
-      const spxDeltaPct = (Math.random() - 0.48) * 0.2;
-      const ndxDeltaPct = (Math.random() - 0.47) * 0.3;
+      const updatedQuotes = prev.quotes.map((quote) => {
+        // Fluctuation between -0.25% and +0.25%
+        const deltaPct = (Math.random() - 0.48) * 0.25;
+        const newPrice = Number((quote.price * (1 + deltaPct / 100)).toFixed(2));
+        const prevClose = quote.dayLow + (quote.dayHigh - quote.dayLow) * 0.5;
+        const change = Number((newPrice - prevClose).toFixed(2));
+        const percentChange = Number(((change / prevClose) * 100).toFixed(2));
+        const dayHigh = Math.max(quote.dayHigh, newPrice);
+        const dayLow = Math.min(quote.dayLow, newPrice);
+        const sparkline = quote.sparkline.length > 0 ? [...quote.sparkline.slice(1), newPrice] : [newPrice];
 
-      const newSpxPrice = Number((prev.spx.price * (1 + spxDeltaPct / 100)).toFixed(2));
-      const spxChange = Number((newSpxPrice - prev.spx.prevClose).toFixed(2));
-      const spxPct = Number(((spxChange / prev.spx.prevClose) * 100).toFixed(2));
-      const newSpxHigh = Math.max(prev.spx.dayHigh, newSpxPrice);
-      const newSpxLow = Math.min(prev.spx.dayLow, newSpxPrice);
-      const newSpxSpark = [...prev.spx.sparkline.slice(1), newSpxPrice];
+        return new IndexQuote({
+          symbol: quote.symbol,
+          name: quote.name,
+          price: newPrice,
+          change,
+          percentChange,
+          dayHigh,
+          dayLow,
+          lastUpdated: Date.now(),
+          category: quote.category,
+          sparkline,
+        });
+      });
 
-      const newNdxPrice = Number((prev.ndx.price * (1 + ndxDeltaPct / 100)).toFixed(2));
-      const ndxChange = Number((newNdxPrice - prev.ndx.prevClose).toFixed(2));
-      const ndxPct = Number(((ndxChange / prev.ndx.prevClose) * 100).toFixed(2));
-      const newNdxHigh = Math.max(prev.ndx.dayHigh, newNdxPrice);
-      const newNdxLow = Math.min(prev.ndx.dayLow, newNdxPrice);
-      const newNdxSpark = [...prev.ndx.sparkline.slice(1), newNdxPrice];
+      const spx = updatedQuotes.find((q) => q.symbol === 'SPX')!;
+      const ndx = updatedQuotes.find((q) => q.symbol === 'NDX')!;
+      const sectorsMap = updatedQuotes
+        .filter((q) => q.category === 'SECTOR')
+        .reduce((acc, q) => {
+          acc[q.symbol] = q;
+          return acc;
+        }, {} as Record<string, IndexQuote>);
 
       return {
         ...prev,
-        spx: {
-          ...prev.spx,
-          price: newSpxPrice,
-          change: spxChange,
-          percentChange: spxPct,
-          dayHigh: newSpxHigh,
-          dayLow: newSpxLow,
-          sparkline: newSpxSpark,
-          lastUpdated: 'Just now',
-        },
-        ndx: {
-          ...prev.ndx,
-          price: newNdxPrice,
-          change: ndxChange,
-          percentChange: ndxPct,
-          dayHigh: newNdxHigh,
-          dayLow: newNdxLow,
-          sparkline: newNdxSpark,
-          lastUpdated: 'Just now',
-        },
+        quotes: updatedQuotes,
+        spx,
+        ndx,
+        sectors: sectorsMap,
         lastSyncTime: new Date(),
       };
     });
@@ -99,7 +114,7 @@ export default function App() {
 
   const handleRefreshQuotes = async () => {
     setIsRefreshing(true);
-    // Simulate network query to financial endpoint
+    // Simulate Ktor parallel HTTP query (~650ms)
     await new Promise((r) => setTimeout(r, 650));
     simulateTick();
     setIsRefreshing(false);
@@ -119,41 +134,52 @@ export default function App() {
     }
   };
 
+  const timeString = marketState.lastSyncTime.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-black text-neutral-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-sky-200">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-neutral-900 border border-neutral-700 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-5 right-5 z-50 bg-neutral-900 border border-neutral-700 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs animate-in fade-in slide-in-from-bottom-3 duration-200">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Mandatory Top Bar Contract: 3 Zones: Brand Title — Nav Links — 1 Primary Action */}
-      <header className="flex items-center justify-between gap-8 px-6 py-4 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur sticky top-0 z-40">
-        {/* Zone 1: Brand Wordmark */}
-        <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <div className="w-7 h-7 rounded-full bg-neutral-900 border border-neutral-700 flex items-center justify-center">
-            <Watch className="w-4 h-4 text-sky-400" />
+      {/* Global Header */}
+      <header className="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur sticky top-0 z-40 px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-md">
+            <Watch className="w-5 h-5 text-white" />
           </div>
-          <span className="text-lg font-extrabold tracking-tight text-white">
-            MarketWear
-          </span>
+          <div>
+            <div className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+              <span>MarketWear</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/40">
+                v2.0
+              </span>
+            </div>
+            <div className="text-[11px] text-neutral-400">Wear OS &amp; Android Companion</div>
+          </div>
         </div>
 
-        {/* Zone 2: 4 Single-Line Text Navigation Links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-neutral-400">
+        {/* Global Navigation Tabs */}
+        <nav className="hidden md:flex items-center gap-6 text-xs text-neutral-400">
           <button
             onClick={() => setActiveTab('simulator')}
-            className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'simulator' ? 'text-white font-semibold' : 'hover:text-neutral-200'
             }`}
           >
-            Watch Simulator
+            Interactive Surfaces
           </button>
           <button
             onClick={() => setActiveTab('config')}
-            className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'config' ? 'text-white font-semibold' : 'hover:text-neutral-200'
             }`}
           >
@@ -161,84 +187,78 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('source')}
-            className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'source' ? 'text-white font-semibold' : 'hover:text-neutral-200'
             }`}
           >
-            Wear OS Source Code
+            Android Source Code
           </button>
           <button
             onClick={() => setActiveTab('install')}
-            className={`transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`transition-colors whitespace-nowrap cursor-pointer ${
               activeTab === 'install' ? 'text-sky-400 font-semibold' : 'hover:text-neutral-200'
             }`}
           >
-            Personal App Library Setup
+            Sideload &amp; Install
           </button>
         </nav>
 
-        {/* Zone 3: 1 Primary Action */}
+        {/* Actions */}
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => setActiveTab('install')}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-400 bg-sky-950/40 border border-sky-800/50 rounded-lg hover:bg-sky-900/40 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <span>Personal Library Guide</span>
-          </button>
           <button
             onClick={handleQuickExport}
             disabled={isExporting}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-500 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50 shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-500 transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 shadow-sm"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{isExporting ? 'Exporting...' : 'Export Wear Project'}</span>
+            <span>{isExporting ? 'Exporting...' : 'Export Project'}</span>
           </button>
         </div>
       </header>
 
-      {/* Main Content Container */}
+      {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Editorial Subtitle & Context */}
+        {/* Editorial Subtitle */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-neutral-900">
           <div>
-            <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 mb-1">
               <span>Google Pixel Watch 4</span>
-              <span aria-hidden="true">·</span>
-              <span>Wear OS 4 / 5</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-emerald-400 font-medium">$0.00 Cloud Cost (Free Endpoints)</span>
-              <span aria-hidden="true">·</span>
-              <span>Personal App Library Ready</span>
+              <span>·</span>
+              <span>Galaxy Z Fold 6</span>
+              <span>·</span>
+              <span className="text-emerald-400 font-medium">11 US Sectors (^YH101 - ^YH311)</span>
+              <span>·</span>
+              <span>Wearable Data Layer</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              S&amp;P 500 &amp; Nasdaq 100 Complications
+              Financial Market Ecosystem for Wear OS &amp; Android
             </h1>
             <p className="text-sm text-neutral-400 mt-1 max-w-2xl">
-              Clean, isolated Android Wear OS app providing complication data sources for Google Pixel Watch dials with zero background battery drain and no Google Cloud API charges.
+              Cross-device financial intelligence for Pixel Watch dials, Wear OS apps, Android companion dashboard, and Jetpack Glance widgets with zero battery drain.
             </p>
           </div>
 
-          {/* Quick tab switcher for mobile/desktop viewports */}
-          <div className="flex items-center gap-1 p-1 bg-neutral-900 border border-neutral-800 rounded-lg self-start md:self-auto">
+          {/* Quick tab switcher */}
+          <div className="flex items-center gap-1 p-1 bg-neutral-900 border border-neutral-800 rounded-lg self-start md:self-auto text-xs">
             <button
               onClick={() => setActiveTab('simulator')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              className={`px-3 py-1.5 font-medium rounded-md transition-colors ${
                 activeTab === 'simulator' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
             >
-              Watch Face
+              Surfaces
             </button>
             <button
               onClick={() => setActiveTab('config')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              className={`px-3 py-1.5 font-medium rounded-md transition-colors ${
                 activeTab === 'config' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
             >
-              Settings
+              Complications
             </button>
             <button
               onClick={() => setActiveTab('source')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              className={`px-3 py-1.5 font-medium rounded-md transition-colors ${
                 activeTab === 'source' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
             >
@@ -246,19 +266,20 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab('install')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              className={`px-3 py-1.5 font-medium rounded-md transition-colors ${
                 activeTab === 'install' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
               }`}
             >
-              Installation
+              Install
             </button>
           </div>
         </div>
 
-        {/* Live Market Indices Bar (Always visible across all tabs for instant glance) */}
+        {/* Live Market Indices & Sectors Bar */}
         <MarketIndicesStrip
           spx={marketState.spx}
           ndx={marketState.ndx}
+          quotes={marketState.quotes}
           marketStatus={marketState.status}
           statusText={marketState.statusText}
           onSimulateTick={simulateTick}
@@ -266,53 +287,179 @@ export default function App() {
           isRefreshing={isRefreshing}
         />
 
-        {/* TAB CONTENT */}
+        {/* TAB CONTENT: Interactive Surfaces */}
         {activeTab === 'simulator' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left 6 cols: Pixel Watch 4 Circular Hardware Simulator */}
-            <div className="lg:col-span-6 bg-neutral-900/50 border border-neutral-800/80 rounded-2xl p-6 flex flex-col items-center justify-center">
-              <div className="w-full flex items-center justify-between text-xs text-neutral-400 mb-6">
-                <span className="font-semibold text-neutral-200">Pixel Watch 4 AMOLED Simulator</span>
-                <span className="font-mono-numbers">450 × 450 px · 320 DPI</span>
+          <div className="space-y-6">
+            {/* Surface Selector Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4">
+              <div>
+                <div className="text-xs text-neutral-400 uppercase tracking-wider font-semibold">
+                  Multi-Device Architecture Showcase
+                </div>
+                <div className="text-sm font-bold text-white">
+                  Switch Target Device Surface
+                </div>
               </div>
 
-              <PixelWatch4Simulator
-                spx={marketState.spx}
-                ndx={marketState.ndx}
-                marketStatus={marketState.status}
-                selectedFormat={selectedFormat}
-                complicationSlots={complicationSlots}
-                onSlotChange={handleSlotChange}
-                onRefreshQuotes={handleRefreshQuotes}
-                isRefreshing={isRefreshing}
-              />
+              <div className="flex items-center gap-1.5 bg-neutral-950 p-1 rounded-xl border border-neutral-800 text-xs">
+                <button
+                  onClick={() => setActiveSurface('watch')}
+                  className={`px-3.5 py-2 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeSurface === 'watch'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Watch className="w-3.5 h-3.5" />
+                  <span>Pixel Watch 4</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveSurface('widget')}
+                  className={`px-3.5 py-2 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeSurface === 'widget'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Glance Widget</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveSurface('mobile')}
+                  className={`px-3.5 py-2 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeSurface === 'mobile'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Phone Companion</span>
+                </button>
+              </div>
             </div>
 
-            {/* Right 6 cols: Complication Quick Controls & Specs */}
-            <div className="lg:col-span-6 space-y-6">
-              <ComplicationConfigurator
-                spx={marketState.spx}
-                ndx={marketState.ndx}
-                selectedFormat={selectedFormat}
-                onFormatChange={setSelectedFormat}
-                complicationSlots={complicationSlots}
-                onSlotChange={handleSlotChange}
-              />
+            {/* Main Interactive Stage */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Stage: Active Surface Rendering */}
+              <div className="lg:col-span-7 bg-neutral-900/40 border border-neutral-800/80 rounded-2xl p-6 flex flex-col items-center justify-center min-h-[560px]">
+                {activeSurface === 'watch' && (
+                  <PixelWatch4Simulator
+                    quotes={marketState.quotes}
+                    spx={marketState.spx}
+                    ndx={marketState.ndx}
+                    marketStatus={marketState.status}
+                    selectedFormat={selectedFormat}
+                    complicationSlots={complicationSlots}
+                    onSlotChange={handleSlotChange}
+                    onRefreshQuotes={handleRefreshQuotes}
+                    isRefreshing={isRefreshing}
+                  />
+                )}
 
-              {/* Hardware Spec Card */}
-              <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-4 text-xs text-neutral-400 space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-neutral-200">
-                  <Shield className="w-4 h-4 text-sky-400" />
-                  <span>Wear OS Complication Specifications</span>
-                </div>
-                <p className="leading-relaxed">
-                  Both services implement <code className="text-sky-300">SuspendingComplicationDataSourceService</code> with metadata type flags for <code className="text-neutral-300">SHORT_TEXT</code>, <code className="text-neutral-300">RANGED_VALUE</code>, and <code className="text-neutral-300">LONG_TEXT</code>. Tapping any complication issues a PendingIntent directly into the isolated watch activity.
-                </p>
+                {activeSurface === 'widget' && (
+                  <MarketGlanceWidgetPreview
+                    quotes={marketState.quotes}
+                    lastUpdatedText={timeString}
+                    onRefresh={handleRefreshQuotes}
+                    isRefreshing={isRefreshing}
+                  />
+                )}
+
+                {activeSurface === 'mobile' && (
+                  <MobileCompanionPreview
+                    quotes={marketState.quotes}
+                    isWatchConnected={marketState.isWatchConnected}
+                    isSyncing={isRefreshing}
+                    lastSyncedText={timeString}
+                    onRefreshAndSync={handleRefreshQuotes}
+                  />
+                )}
+              </div>
+
+              {/* Right Stage: Contextual Controls & Architecture Deep Dive */}
+              <div className="lg:col-span-5 space-y-6">
+                {activeSurface === 'watch' && (
+                  <>
+                    <ComplicationConfigurator
+                      spx={marketState.spx}
+                      ndx={marketState.ndx}
+                      selectedFormat={selectedFormat}
+                      onFormatChange={setSelectedFormat}
+                      complicationSlots={complicationSlots}
+                      onSlotChange={handleSlotChange}
+                    />
+
+                    <div className="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-4 text-xs text-neutral-400 space-y-2">
+                      <div className="flex items-center gap-2 font-semibold text-neutral-200">
+                        <Watch className="w-4 h-4 text-sky-400" />
+                        <span>Wear OS 5 Rotary &amp; ScalingLazyColumn</span>
+                      </div>
+                      <p className="leading-relaxed">
+                        Scroll using the right-side rotating crown or mouse wheel. Uses <code className="text-sky-300">@Immutable</code> domain classes and zero-allocation card hoisting to maintain locked 60 FPS scrolling through major indices and all 11 sectors.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {activeSurface === 'widget' && (
+                  <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-4 text-xs text-neutral-300">
+                    <div className="flex items-center gap-2 font-bold text-white text-sm">
+                      <Layers className="w-4 h-4 text-emerald-400" />
+                      <span>Jetpack Glance 1.1.0 AppWidget</span>
+                    </div>
+                    <p className="leading-relaxed text-neutral-400">
+                      Declarative home screen widget matching the Pixel Watch aesthetic. Built in <code className="text-sky-300">:mobile</code> with Compose-style Glance modifiers, LazyColumn virtualization, and auto-refresh triggered by both WorkManager (every 15 min) and companion foreground sync.
+                    </p>
+                    <div className="space-y-2 pt-2 border-t border-neutral-800">
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Framework</span>
+                        <span className="font-mono text-neutral-300">androidx.glance:glance-appwidget:1.1.0</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Update Trigger</span>
+                        <span className="font-mono text-neutral-300">GlanceAppWidgetManager.updateAll()</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Number Formatting</span>
+                        <span className="font-mono text-neutral-300">Compact 1k/1M multiples</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeSurface === 'mobile' && (
+                  <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-4 text-xs text-neutral-300">
+                    <div className="flex items-center gap-2 font-bold text-white text-sm">
+                      <Smartphone className="w-4 h-4 text-sky-400" />
+                      <span>Material 3 Mobile Companion</span>
+                    </div>
+                    <p className="leading-relaxed text-neutral-400">
+                      The phone companion offloads all battery-heavy operations from the watch. It polls the Yahoo Finance v8 API concurrently with Ktor Android engine (~800ms) and pushes the serialized JSON payload via Google Play Services <code className="text-sky-300">DataClient</code> directly into the watch's Room DB.
+                    </p>
+                    <div className="space-y-2 pt-2 border-t border-neutral-800">
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Networking</span>
+                        <span className="font-mono text-neutral-300">Ktor async / awaitAll</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Sync Path</span>
+                        <span className="font-mono text-neutral-300">/market/quotes</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-500">Offloading Policy</span>
+                        <span className="font-mono text-neutral-300">Preserves watch radio &amp; battery</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
 
+        {/* TAB CONTENT: Complication Formats */}
         {activeTab === 'config' && (
           <div className="space-y-6">
             <ComplicationConfigurator
@@ -326,12 +473,14 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB CONTENT: Source Code */}
         {activeTab === 'source' && (
           <div className="space-y-6">
             <AndroidCodeViewer />
           </div>
         )}
 
+        {/* TAB CONTENT: Installation */}
         {activeTab === 'install' && (
           <div className="space-y-6">
             <InstallationGuide />
@@ -339,18 +488,25 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer */}
+      {/* Global Footer */}
       <footer className="border-t border-neutral-900 bg-neutral-950 py-6 px-6 text-xs text-neutral-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span>MarketWear for Wear OS</span>
+            <span>MarketWear Multi-Device Financial Ecosystem</span>
             <span>·</span>
-            <span>Target SDK 34 (Android 14 / Wear OS 5)</span>
+            <span>Wear OS 5 / Android 14+</span>
             <span>·</span>
-            <span>Standalone Complication Provider</span>
+            <a
+              href="https://github.com/mohitb117/MarketWearWatch"
+              target="_blank"
+              rel="noreferrer"
+              className="text-sky-400 hover:underline"
+            >
+              GitHub Repository
+            </a>
           </div>
           <div>
-            Built for Google Pixel Watch (1, 2, 3, 4)
+            Built with Jetpack Compose &amp; Glance
           </div>
         </div>
       </footer>
