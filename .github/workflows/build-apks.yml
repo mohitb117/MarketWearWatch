@@ -1,0 +1,82 @@
+name: Build Android APKs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android-wear-app/**'
+      - '.github/workflows/build-apks.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'android-wear-app/**'
+      - '.github/workflows/build-apks.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+          - both
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apks:
+    name: Build Watch & Mobile APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x android-wear-app/gradlew
+
+      - name: Build Release APKs
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_type == 'release' || github.event.inputs.build_type == 'both' }}
+        working-directory: android-wear-app
+        run: ./gradlew assembleRelease
+
+      - name: Build Debug APKs
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both') }}
+        working-directory: android-wear-app
+        run: ./gradlew assembleDebug
+
+      - name: Upload Pixel Watch APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketwear-watch-release-apk
+          path: android-wear-app/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      - name: Upload Mobile Companion APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketwear-mobile-companion-release-apk
+          path: android-wear-app/mobile/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+
+      - name: Upload All Generated APKs Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketwear-all-apks
+          path: android-wear-app/*/build/outputs/apk/**/*.apk
+          if-no-files-found: error

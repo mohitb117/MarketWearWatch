@@ -1,6 +1,7 @@
 # MarketWear: Wear OS & Android Financial Market Ecosystem
 
 [![Live Showcase](https://img.shields.io/badge/Live%20Showcase-GitHub%20Pages-brightgreen.svg)](https://mohitb117.github.io/MarketWearWatch/)
+[![Build Android APKs](https://github.com/mohitb117/MarketWearWatch/actions/workflows/build-apks.yml/badge.svg)](https://github.com/mohitb117/MarketWearWatch/actions/workflows/build-apks.yml)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
 [![Wear OS](https://img.shields.io/badge/Wear%20OS-5.0%20%2F%20API%2034-blue.svg)](https://developer.android.com/wear)
 [![Jetpack Compose](https://img.shields.io/badge/Compose-Wear%20%26%20Mobile-green.svg)](https://developer.android.com/jetpack/compose)
