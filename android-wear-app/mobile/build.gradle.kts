@@ -62,6 +62,10 @@ dependencies {
     // Wearable Data Layer
     implementation(libs.play.services.wearable)
 
+    // Jetpack Glance Widget
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
     // Ktor Client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.android)

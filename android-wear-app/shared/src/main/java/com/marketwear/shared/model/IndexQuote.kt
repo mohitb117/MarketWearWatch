@@ -1,12 +1,15 @@
 package com.marketwear.shared.model
 
+import android.annotation.SuppressLint
 import kotlinx.serialization.Serializable
 
 /**
  * Snapshot of a major financial index quote, shared between Phone and Wear OS.
  */
+@SuppressLint(value = ["DefaultLocale", "UnsafeOptInUsageError"])
 @Serializable
-data class IndexQuote(
+data class IndexQuote
+constructor(
     val symbol: String,        // "SPX" or "NDX"
     val name: String,          // "S&P 500" or "Nasdaq 100"
     val price: Double,         // e.g. 5985.42
@@ -18,6 +21,8 @@ data class IndexQuote(
 ) {
     val isPositive: Boolean get() = change >= 0
     val formattedPoints: String get() = String.format("%,.0f", price)
-    val formattedChange: String get() = String.format("%s%.2f", if (isPositive) "+" else "", change)
-    val formattedPercent: String get() = String.format("%s%.2f%%", if (isPositive) "+" else "", percentChange)
+    val formattedChange: String
+        get() = String.format("%s%.2f", if (isPositive) "+" else "", change)
+    val formattedPercent: String
+        get() = String.format("%s%.2f%%", if (isPositive) "+" else "", percentChange)
 }
