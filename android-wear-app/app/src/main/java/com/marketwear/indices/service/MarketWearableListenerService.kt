@@ -5,12 +5,14 @@ import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.WearableListenerService
+import com.marketwear.indices.data.IndexQuote
 import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 
 class MarketWearableListenerService : WearableListenerService() {
 
@@ -28,14 +30,26 @@ class MarketWearableListenerService : WearableListenerService() {
                     runBlocking(Dispatchers.IO) {
                         val entities = mutableListOf<IndexQuoteEntity>()
 
-                        // Extract SPX
-                        extractQuoteEntity(dataMap, WearConstants.PREFIX_SPX)?.let {
-                            entities.add(it)
+                        // 1. Try decoding full quotes list from JSON payload
+                        val payload = dataMap.getString(WearConstants.KEY_QUOTES_PAYLOAD)
+                        if (!payload.isNullOrBlank()) {
+                            try {
+                                val json = Json { ignoreUnknownKeys = true }
+                                val quotes = json.decodeFromString<List<IndexQuote>>(payload)
+                                entities.addAll(quotes.map { IndexQuoteEntity.fromDomainModel(it) })
+                            } catch (_: Exception) {
+                                // Fallback to individual fields
+                            }
                         }
 
-                        // Extract NDX
-                        extractQuoteEntity(dataMap, WearConstants.PREFIX_NDX)?.let {
-                            entities.add(it)
+                        // 2. Fallback to individual prefix extraction if JSON wasn't available
+                        if (entities.isEmpty()) {
+                            extractQuoteEntity(dataMap, WearConstants.PREFIX_SPX)?.let {
+                                entities.add(it)
+                            }
+                            extractQuoteEntity(dataMap, WearConstants.PREFIX_NDX)?.let {
+                                entities.add(it)
+                            }
                         }
 
                         if (entities.isNotEmpty()) {

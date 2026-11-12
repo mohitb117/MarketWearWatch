@@ -57,11 +57,57 @@ class KtorMarketClientParsingTest {
 
         assertEquals("SPX", quote.symbol)
         assertEquals("S&P 500", quote.name)
+        assertEquals("INDEX", quote.category)
         assertEquals(5985.42, quote.price, 0.001)
         assertEquals(42.15, quote.change, 0.01)
         assertEquals(0.71, quote.percentChange, 0.01)
         assertEquals(6010.50, quote.dayHigh, 0.001)
         assertEquals(5940.20, quote.dayLow, 0.001)
+    }
+
+    @Test
+    fun testParseSectorQuote() {
+        val sampleSectorJson = """
+            {
+              "chart": {
+                "result": [
+                  {
+                    "meta": {
+                      "symbol": "^YH101",
+                      "regularMarketPrice": 2220463.5,
+                      "previousClose": 2186163.5,
+                      "regularMarketDayHigh": 2250000.0,
+                      "regularMarketDayLow": 2190000.0
+                    }
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val mockEngine = MockEngine { _ ->
+            respond(
+                content = sampleSectorJson,
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+
+        val testHttpClient = HttpClient(mockEngine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+
+        val client = KtorMarketClient(testHttpClient)
+        val quote = runBlocking { client.fetchQuote("^YH101") }
+
+        assertEquals("^YH101", quote.symbol)
+        assertEquals("Basic Materials", quote.name)
+        assertEquals("SECTOR", quote.category)
+        assertEquals(2220463.5, quote.price, 0.001)
+        assertEquals(34300.0, quote.change, 0.01)
+        assertEquals(1.57, quote.percentChange, 0.01)
     }
 
     @Test

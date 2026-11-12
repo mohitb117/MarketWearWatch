@@ -25,19 +25,15 @@ class MobileMarketRepository(
     }
 
     /**
-     * Fetches fresh quotes from Yahoo Finance.
-     * Throws on network failure so workers and callers are aware of failures
+     * Fetches fresh quotes from Yahoo Finance for major indices and all 11 sectors.
+     * Throws on total network failure so workers and callers are aware of failures
      * and NEVER syncs dummy/fake quotes to the watch.
      */
     suspend fun fetchAllQuotes(): List<IndexQuote> = withContext(Dispatchers.IO) {
-        val symbols = listOf("SPX", "NDX")
-        val results = mutableListOf<IndexQuote>()
-
-        for (sym in symbols) {
-            val fresh = client.fetchQuote(sym)
-            results.add(fresh)
+        val results = client.fetchAllQuotes()
+        if (results.isEmpty()) {
+            throw RuntimeException("Failed to fetch market quotes: empty result set")
         }
-
         _quotes.value = results
         results
     }

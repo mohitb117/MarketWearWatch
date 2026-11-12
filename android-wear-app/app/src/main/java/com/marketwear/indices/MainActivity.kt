@@ -23,8 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -37,6 +39,7 @@ import androidx.wear.compose.material.CardDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.CompactChip
 import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
@@ -75,6 +78,11 @@ fun MarketWearApp(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberScalingLazyListState()
 
+    // Memoized partition before ScalingLazyColumn to avoid allocation on scroll recompositions
+    val (indices, sectors) = remember(uiState.quotes) {
+        uiState.quotes.partition { it.symbol == "SPX" || it.symbol == "NDX" }
+    }
+
     Scaffold(
         timeText = { TimeText() },
         vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) },
@@ -85,9 +93,9 @@ fun MarketWearApp(
                 .fillMaxSize()
                 .background(Color.Black),
             state = listState,
-            autoCentering = AutoCenteringParams(itemIndex = 1),
+            autoCentering = AutoCenteringParams(itemIndex = 0),
             horizontalAlignment = Alignment.CenterHorizontally,
-            contentPadding = PaddingValues(top = 28.dp, bottom = 28.dp, start = 14.dp, end = 14.dp)
+            contentPadding = PaddingValues(top = 24.dp, bottom = 24.dp, start = 12.dp, end = 12.dp)
         ) {
             item(key = "header_title") {
                 Text(
@@ -98,13 +106,33 @@ fun MarketWearApp(
                 )
             }
 
-            // Cards from Unidirectional StateFlow with stable keys
             items(
-                items = uiState.quotes,
+                items = indices,
                 key = { it.symbol }
             ) { quote ->
                 IndexCard(quote = quote)
                 Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            // Market Sectors Section Header
+            if (sectors.isNotEmpty()) {
+                item(key = "sectors_header") {
+                    Text(
+                        text = "Sectors",
+                        style = MaterialTheme.typography.caption1,
+                        color = Color(0xFF9E9E9E),
+                        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
+                    )
+                }
+
+                // Sector Cards
+                items(
+                    items = sectors,
+                    key = { it.symbol }
+                ) { quote ->
+                    IndexCard(quote = quote)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
             }
 
             // Refresh action chip — elegantly styled, never truncated
@@ -152,37 +180,80 @@ fun MarketWearApp(
     }
 }
 
+fun getInstrumentIcon(symbol: String): Int {
+    return when (symbol) {
+        "SPX" -> R.drawable.ic_sp500
+        "NDX" -> R.drawable.ic_nasdaq
+        "^YH101" -> R.drawable.ic_sector_materials
+        "^YH102" -> R.drawable.ic_sector_cyclical
+        "^YH103" -> R.drawable.ic_sector_financial
+        "^YH104" -> R.drawable.ic_sector_realestate
+        "^YH205" -> R.drawable.ic_sector_defensive
+        "^YH206" -> R.drawable.ic_sector_healthcare
+        "^YH207" -> R.drawable.ic_sector_utilities
+        "^YH308" -> R.drawable.ic_sector_communication
+        "^YH309" -> R.drawable.ic_sector_energy
+        "^YH310" -> R.drawable.ic_sector_industrials
+        "^YH311" -> R.drawable.ic_sector_technology
+        else -> R.drawable.ic_trend_up
+    }
+}
+
+private val CardShape = RoundedCornerShape(14.dp)
+private val CardBackgroundColor = Color(0xFF1E1E1E)
+private val GreenTrendColor = Color(0xFF4CAF50)
+private val RedTrendColor = Color(0xFFF44336)
+
 @Composable
-fun IndexCard(quote: IndexQuote) {
-    val isPositive = quote.change >= 0
-    val trendColor = if (isPositive) Color(0xFF4CAF50) else Color(0xFFF44336)
-    val cardBackground = CardDefaults.cardBackgroundPainter(
-        startBackgroundColor = Color(0xFF1E1E1E),
-        endBackgroundColor = Color(0xFF1E1E1E)
-    )
+fun IndexCard(quote: IndexQuote, modifier: Modifier = Modifier) {
+    val trendColor = if (quote.isPositive) GreenTrendColor else RedTrendColor
+    val iconRes = remember(quote.symbol) { getInstrumentIcon(quote.symbol) }
 
     Card(
         onClick = { /* Tap */ },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        backgroundPainter = cardBackground
+        modifier = modifier.fillMaxWidth(),
+        shape = CardShape,
+        backgroundPainter = CardDefaults.cardBackgroundPainter(
+            startBackgroundColor = CardBackgroundColor,
+            endBackgroundColor = CardBackgroundColor
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(4.dp)
+                .padding(horizontal = 6.dp, vertical = 6.dp)
         ) {
+            // Top Row: Sector Icon + Multi-line Heading + Percent Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = quote.name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color.White
-                )
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = iconRes),
+                        contentDescription = quote.name,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 4.dp)
+                    )
+                    Text(
+                        text = quote.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
                 Text(
                     text = quote.formattedPercent,
                     color = trendColor,
@@ -193,21 +264,23 @@ fun IndexCard(quote: IndexQuote) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Bottom Row: Compact Points (1k / 1M multiples) + Compact Change
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(
-                    text = quote.formattedPoints,
+                    text = quote.formattedCompactPoints,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 17.sp,
+                    fontSize = 16.sp,
                     color = Color.White
                 )
                 Text(
-                    text = quote.formattedChange,
+                    text = quote.formattedCompactChange,
                     color = trendColor,
-                    fontSize = 11.sp
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp
                 )
             }
         }

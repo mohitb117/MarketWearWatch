@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
 
@@ -49,6 +50,9 @@ dependencies {
     // Official AndroidX Wear Watch Face Complications API
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
     implementation("androidx.wear.watchface:watchface-complications-data:1.2.1")
+
+    // Kotlinx Serialization
+    implementation(libs.kotlinx.serialization.json)
 
     // Wear OS UI & Jetpack Compose
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
