@@ -15,3 +15,6 @@
     @kotlinx.serialization.Serializable <init>(...);
 }
 -keepclassmembers class * extends kotlinx.serialization.internal.GeneratedSerializer { *; }
+
+# Ktor optional SLF4J logger binder
+-dontwarn org.slf4j.impl.StaticLoggerBinder

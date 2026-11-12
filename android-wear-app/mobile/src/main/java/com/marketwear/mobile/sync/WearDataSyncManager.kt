@@ -15,7 +15,7 @@ class WearDataSyncManager(private val context: Context) {
     private val dataClient = Wearable.getDataClient(context)
     private val capabilityClient = Wearable.getCapabilityClient(context)
 
-    suspend fun syncQuotesToWatch(quotes: List<IndexQuote>): Boolean {
+    suspend fun syncQuotesToWatch(quotes: List<IndexQuote>, urgent: Boolean = true): Boolean {
         return try {
             val putDataMapReq = PutDataMapRequest.create(WearConstants.PATH_MARKET_QUOTES)
             val dataMap = putDataMapReq.dataMap
@@ -25,21 +25,30 @@ class WearDataSyncManager(private val context: Context) {
             dataMap.putString(WearConstants.KEY_QUOTES_PAYLOAD, jsonPayload)
             dataMap.putLong(WearConstants.KEY_SYNC_TIMESTAMP, System.currentTimeMillis())
 
-            // Also put individual fields for fast field-level extraction if needed
+            // Only populate legacy SPX/NDX prefix fields for major indices
             quotes.forEach { quote ->
-                val prefix = if (quote.symbol == "SPX") WearConstants.PREFIX_SPX else WearConstants.PREFIX_NDX
-                dataMap.putString(prefix + WearConstants.FIELD_SYMBOL, quote.symbol)
-                dataMap.putString(prefix + WearConstants.FIELD_NAME, quote.name)
-                dataMap.putDouble(prefix + WearConstants.FIELD_PRICE, quote.price)
-                dataMap.putDouble(prefix + WearConstants.FIELD_CHANGE, quote.change)
-                dataMap.putDouble(prefix + WearConstants.FIELD_PERCENT, quote.percentChange)
-                dataMap.putDouble(prefix + WearConstants.FIELD_HIGH, quote.dayHigh)
-                dataMap.putDouble(prefix + WearConstants.FIELD_LOW, quote.dayLow)
-                dataMap.putLong(prefix + WearConstants.FIELD_TIME, quote.lastUpdated)
+                val prefix = when (quote.symbol) {
+                    "SPX" -> WearConstants.PREFIX_SPX
+                    "NDX" -> WearConstants.PREFIX_NDX
+                    else -> null
+                }
+                if (prefix != null) {
+                    dataMap.putString(prefix + WearConstants.FIELD_SYMBOL, quote.symbol)
+                    dataMap.putString(prefix + WearConstants.FIELD_NAME, quote.name)
+                    dataMap.putDouble(prefix + WearConstants.FIELD_PRICE, quote.price)
+                    dataMap.putDouble(prefix + WearConstants.FIELD_CHANGE, quote.change)
+                    dataMap.putDouble(prefix + WearConstants.FIELD_PERCENT, quote.percentChange)
+                    dataMap.putDouble(prefix + WearConstants.FIELD_HIGH, quote.dayHigh)
+                    dataMap.putDouble(prefix + WearConstants.FIELD_LOW, quote.dayLow)
+                    dataMap.putLong(prefix + WearConstants.FIELD_TIME, quote.lastUpdated)
+                }
             }
 
-            val request = putDataMapReq.asPutDataRequest().setUrgent()
-            dataClient.putDataItem(request).await()
+            val putRequest = putDataMapReq.asPutDataRequest()
+            if (urgent) {
+                putRequest.setUrgent()
+            }
+            dataClient.putDataItem(putRequest).await()
             true
         } catch (e: Exception) {
             false
