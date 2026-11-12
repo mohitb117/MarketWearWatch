@@ -70,6 +70,10 @@ dependencies {
     // WorkManager for background sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    // Wearable Data Layer API
+    implementation(libs.play.services.wearable)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
     // Wear OS Standalone Hardware
     compileOnly("com.google.android.wearable:wearable:2.9.0")
 }

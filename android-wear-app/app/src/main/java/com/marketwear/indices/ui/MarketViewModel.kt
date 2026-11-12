@@ -48,7 +48,7 @@ class MarketViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                repository.refreshAllOnline()
+                repository.refreshWithPhoneFallback()
             } finally {
                 _isRefreshing.value = false
             }

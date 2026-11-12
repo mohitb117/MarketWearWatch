@@ -3,12 +3,16 @@ package com.marketwear.indices.data
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.Wearable
 import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
+import com.marketwear.shared.contracts.WearConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -18,12 +22,14 @@ import java.net.URL
 
 /**
  * Repository responsible for managing market indices data using Room as the single source of truth.
- * Ensures Unidirectional Data Flow (UDF) for UI and Complications.
+ * Supports offloading network sync to paired phone with standalone fallback.
  */
 class MarketRepository private constructor(private val context: Context) {
 
     private val db = MarketDatabase.getInstance(context)
     private val dao = db.indexQuoteDao()
+    private val capabilityClient = Wearable.getCapabilityClient(context)
+    private val messageClient = Wearable.getMessageClient(context)
 
     init {
         // Automatically schedule 15-minute battery-conscious background WorkManager sync
@@ -47,31 +53,49 @@ class MarketRepository private constructor(private val context: Context) {
                 INSTANCE ?: MarketRepository(context.applicationContext).also { INSTANCE = it }
             }
         }
-
-        private const val CACHE_EXPIRY_MS = 15 * 60 * 1000L // 15 minutes
     }
 
-    suspend fun getQuote(symbol: String, forceRefresh: Boolean = false): IndexQuote =
-        withContext(Dispatchers.IO) {
-            val entity = dao.getQuote(symbol)
-            val now = System.currentTimeMillis()
+    /**
+     * Complication-safe quote retrieval: strictly offline Room read.
+     */
+    suspend fun getQuote(symbol: String): IndexQuote = withContext(Dispatchers.IO) {
+        dao.getQuote(symbol)?.toDomainModel() ?: getFallbackQuote(symbol)
+    }
 
-            if (!forceRefresh && entity != null && (now - entity.lastUpdated < CACHE_EXPIRY_MS)) {
-                return@withContext entity.toDomainModel()
-            }
-
-            if (!isNetworkAvailable()) {
-                return@withContext entity?.toDomainModel() ?: getFallbackQuote(symbol)
-            }
-
+    /**
+     * Smart refresh:
+     * If phone is available, request refresh via Wearable Data Layer.
+     * If phone is unavailable, fall back to direct watch network fetch.
+     */
+    suspend fun refreshWithPhoneFallback() = withContext(Dispatchers.IO) {
+        val phoneNode = getConnectedPhoneNode()
+        if (phoneNode != null) {
             try {
-                val fresh = fetchOnlineQuote(symbol)
-                dao.insertOrUpdate(IndexQuoteEntity.fromDomainModel(fresh))
-                fresh
-            } catch (e: Exception) {
-                entity?.toDomainModel() ?: getFallbackQuote(symbol)
+                messageClient.sendMessage(
+                    phoneNode.id,
+                    WearConstants.PATH_REQUEST_REFRESH,
+                    ByteArray(0)
+                ).await()
+                return@withContext
+            } catch (_: Exception) {
+                // If message failed, fall through to direct fetch
             }
         }
+
+        // Fallback: direct online fetch on watch
+        refreshAllOnline()
+    }
+
+    private suspend fun getConnectedPhoneNode(): com.google.android.gms.wearable.Node? {
+        return try {
+            val capabilityInfo = capabilityClient
+                .getCapability(WearConstants.CAPABILITY_PHONE, CapabilityClient.FILTER_REACHABLE)
+                .await()
+            capabilityInfo.nodes.firstOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     suspend fun refreshAllOnline(): List<IndexQuote> = withContext(Dispatchers.IO) {
         if (!isNetworkAvailable()) {

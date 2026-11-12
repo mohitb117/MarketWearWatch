@@ -14,6 +14,7 @@ import com.marketwear.indices.MarketDualComplicationService
 import com.marketwear.indices.NasdaqComplicationService
 import com.marketwear.indices.Sp500ComplicationService
 import com.marketwear.indices.data.MarketRepository
+import com.marketwear.indices.data.db.MarketDatabase
 import java.util.concurrent.TimeUnit
 
 class MarketSyncWorker(
@@ -22,9 +23,21 @@ class MarketSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        val db = MarketDatabase.getInstance(applicationContext)
+        val quotes = db.indexQuoteDao().getAllQuotes()
+        val latestUpdate = quotes.maxOfOrNull { it.lastUpdated } ?: 0L
+        val now = System.currentTimeMillis()
+
+        // Staleness guard: If data is fresh (<30 min, kept updated by phone DataClient),
+        // skip direct network calls completely to preserve watch battery.
+        if (latestUpdate > 0L && (now - latestUpdate < 30 * 60 * 1000L)) {
+            triggerComplicationUpdates(applicationContext)
+            return Result.success()
+        }
+
         val repository = MarketRepository.getInstance(applicationContext)
         return try {
-            repository.refreshAllOnline()
+            repository.refreshWithPhoneFallback()
             triggerComplicationUpdates(applicationContext)
             Result.success()
         } catch (e: Exception) {
