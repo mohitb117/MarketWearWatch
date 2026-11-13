@@ -14,7 +14,8 @@ data class IndexQuoteEntity(
     val percentChange: Double,
     val dayHigh: Double,
     val dayLow: Double,
-    val lastUpdated: Long
+    val lastUpdated: Long,
+    val sparklineCsv: String = ""
 ) {
     fun toDomainModel(): IndexQuote = IndexQuote(
         symbol = symbol,
@@ -24,7 +25,12 @@ data class IndexQuoteEntity(
         percentChange = percentChange,
         dayHigh = dayHigh,
         dayLow = dayLow,
-        lastUpdated = lastUpdated
+        lastUpdated = lastUpdated,
+        sparkline = if (sparklineCsv.isBlank()) {
+            emptyList()
+        } else {
+            sparklineCsv.split(",").mapNotNull { it.toDoubleOrNull() }
+        }
     )
 
     companion object {
@@ -36,7 +42,8 @@ data class IndexQuoteEntity(
             percentChange = quote.percentChange,
             dayHigh = quote.dayHigh,
             dayLow = quote.dayLow,
-            lastUpdated = quote.lastUpdated
+            lastUpdated = quote.lastUpdated,
+            sparklineCsv = quote.sparkline.joinToString(",")
         )
     }
 }

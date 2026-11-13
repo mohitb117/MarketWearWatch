@@ -16,9 +16,18 @@ data class IndexQuote(
     val dayHigh: Double,       // e.g. 6010.50
     val dayLow: Double,        // e.g. 5940.20
     val lastUpdated: Long,     // Unix timestamp millis
-    val category: String = if (symbol.startsWith("^YH")) "SECTOR" else "INDEX"
+    val category: String = when {
+        symbol == "PORTFOLIO" -> "PORTFOLIO"
+        symbol.startsWith("^YH") -> "SECTOR"
+        else -> "INDEX"
+    },
+    val sparkline: List<Double> = emptyList()
 ) {
     val isPositive: Boolean get() = change >= 0
+    val isPortfolio: Boolean get() = symbol == "PORTFOLIO" || category == "PORTFOLIO"
+
+    val formattedScore: String
+        get() = NumberFormatter.formatFixed(price, 2)
 
     val formattedPoints: String
         get() = NumberFormatter.formatIntegerWithCommas(price)
@@ -36,5 +45,19 @@ data class IndexQuote(
         get() {
             val sign = if (isPositive) "+" else "-"
             return sign + NumberFormatter.formatCompact(abs(change))
+        }
+
+    val formattedDayLow: String
+        get() = NumberFormatter.formatIntegerWithCommas(dayLow)
+
+    val formattedDayHigh: String
+        get() = NumberFormatter.formatIntegerWithCommas(dayHigh)
+
+    val dayRangeProgress: Float
+        get() {
+            val min = dayLow.toFloat()
+            val max = dayHigh.coerceAtLeast(dayLow + 0.01).toFloat()
+            val current = price.toFloat().coerceIn(min, max)
+            return ((current - min) / (max - min)).coerceIn(0f, 1f)
         }
 }

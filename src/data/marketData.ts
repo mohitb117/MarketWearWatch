@@ -1,7 +1,21 @@
 import { IndexQuote, IndexQuoteData, InstrumentCategory } from '../contracts/IndexQuote';
-import { ALL_INSTRUMENTS, getFallbackQuotes, MarketRegistry } from '../contracts/MarketInstrument';
+import {
+  ALL_INSTRUMENTS,
+  getFallbackQuotes,
+  MarketRegistry,
+  toUnnormalizedPortfolioQuote,
+  toUnnormalizedPortfolioScore,
+  TOTAL_RAW_PORTFOLIO_WEIGHT_PCT,
+} from '../contracts/MarketInstrument';
 
-export { IndexQuote, MarketRegistry, ALL_INSTRUMENTS };
+export {
+  IndexQuote,
+  MarketRegistry,
+  ALL_INSTRUMENTS,
+  toUnnormalizedPortfolioQuote,
+  toUnnormalizedPortfolioScore,
+  TOTAL_RAW_PORTFOLIO_WEIGHT_PCT,
+};
 export type { InstrumentCategory, IndexQuoteData };
 
 export type MarketIndex = IndexQuote;

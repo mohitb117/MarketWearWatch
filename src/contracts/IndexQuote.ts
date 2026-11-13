@@ -2,7 +2,7 @@
  * Shared IndexQuote data contract.
  * Direct TypeScript binding for com.marketwear.shared.model.IndexQuote.kt
  */
-export type InstrumentCategory = 'INDEX' | 'SECTOR';
+export type InstrumentCategory = 'INDEX' | 'SECTOR' | 'PORTFOLIO';
 
 export interface IndexQuoteData {
   symbol: string;        // "SPX", "NDX", "^YH101"..."^YH311"
@@ -40,7 +40,7 @@ export class IndexQuote {
     this.dayHigh = data.dayHigh;
     this.dayLow = data.dayLow;
     this.lastUpdated = data.lastUpdated;
-    this.category = data.category || (data.symbol.startsWith('^YH') ? 'SECTOR' : 'INDEX');
+    this.category = data.category || (data.symbol === 'PORTFOLIO' ? 'PORTFOLIO' : data.symbol.startsWith('^YH') ? 'SECTOR' : 'INDEX');
     this.sparkline = data.sparkline || [];
     this.volume = data.volume || '--';
   }
@@ -49,7 +49,18 @@ export class IndexQuote {
     return this.change >= 0;
   }
 
+  get isPortfolio(): boolean {
+    return this.category === 'PORTFOLIO' || this.symbol === 'PORTFOLIO';
+  }
+
+  get formattedScore(): string {
+    return this.price.toFixed(2);
+  }
+
   get formattedPoints(): string {
+    if (this.isPortfolio) {
+      return this.formattedScore;
+    }
     return Math.round(this.price).toLocaleString();
   }
 

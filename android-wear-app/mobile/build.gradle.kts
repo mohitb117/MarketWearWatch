@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.marketwear.mobile"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.marketwear.indices"
@@ -36,21 +36,24 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 composeCompiler {
-    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("compose_compiler_config.conf")
+    stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_compiler_config.conf"))
 }
 
 dependencies {
     implementation(project(":shared"))
+    implementation(project(":shared-ui"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.lifecycle.viewmodel.compose)
@@ -62,6 +65,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.activity:activity-compose:1.9.2")
 
     // Wearable Data Layer
@@ -86,9 +90,14 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
+    // Vico Compose & Glance Chart Library
+    implementation(libs.vico.compose)
+    implementation(libs.vico.compose.m2)
+    implementation(libs.vico.compose.m3)
+    implementation(libs.vico.compose.glance)
+
     // Android 16 AppFunctions (On-device MCP for Gemini)
     implementation(libs.androidx.appfunctions)
-    implementation(libs.androidx.appfunctions.service)
     ksp(libs.androidx.appfunctions.compiler)
 
     // Testing

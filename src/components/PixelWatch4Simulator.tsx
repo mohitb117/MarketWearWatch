@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { IndexQuote, MarketStatus, getComplicationText } from '../data/marketData';
+import { IndexQuote, MarketStatus, getComplicationText, toUnnormalizedPortfolioQuote } from '../data/marketData';
 import { SectorIcon } from './SectorIcon';
 import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
-  RotateCw,
   Layers,
-  Smartphone,
   Eye,
-  Radio,
-  Sparkles,
 } from 'lucide-react';
 
 export type WatchFaceStyle = 'concentric' | 'utility' | 'digital_sport' | 'minimal';
@@ -47,6 +43,7 @@ export const PixelWatch4Simulator: React.FC<PixelWatch4SimulatorProps> = ({
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [watchAppOpen, setWatchAppOpen] = useState<boolean>(false);
   const [crownRotation, setCrownRotation] = useState<number>(0);
+  const [isNormalizedMode, setIsNormalizedMode] = useState<boolean>(true);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -81,8 +78,63 @@ export const PixelWatch4Simulator: React.FC<PixelWatch4SimulatorProps> = ({
     }
   };
 
+  const portfolioQuote = quotes.find((q) => q.category === 'PORTFOLIO');
   const majorIndices = quotes.filter((q) => q.category === 'INDEX');
   const sectorQuotes = quotes.filter((q) => q.category === 'SECTOR');
+
+  const renderPortfolioSparklineSvg = (primaryPts: number[], secondaryPts: number[], isPositive: boolean) => {
+    const pts = primaryPts.length >= 2 ? primaryPts : [100.0, 100.0];
+    const secPts = secondaryPts.length >= 2 ? secondaryPts : pts;
+    const allVals = [...pts, ...secPts, 100.0];
+    const minVal = Math.min(...allVals) - 0.08;
+    const maxVal = Math.max(...allVals) + 0.08;
+    const span = Math.max(0.1, maxVal - minVal);
+    const width = 200;
+    const height = 34;
+
+    const yFor = (v: number) => {
+      const norm = Math.min(1, Math.max(0, (v - minVal) / span));
+      return (height - 6) * (1 - norm) + 3;
+    };
+
+    const baseY = yFor(100.0);
+    const primaryPointsStr = pts
+      .map((v, idx) => `${((idx / (pts.length - 1)) * width).toFixed(1)},${yFor(v).toFixed(1)}`)
+      .join(' ');
+    const secondaryPointsStr = secPts
+      .map((v, idx) => `${((idx / (secPts.length - 1)) * width).toFixed(1)},${yFor(v).toFixed(1)}`)
+      .join(' ');
+
+    return (
+      <svg className="w-full h-[34px] overflow-visible" viewBox={`0 0 ${width} ${height}`}>
+        <line
+          x1="0"
+          y1={baseY}
+          x2={width}
+          y2={baseY}
+          stroke="#546E7A"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+        <polyline
+          fill="none"
+          stroke="#64B5F6"
+          strokeOpacity="0.6"
+          strokeWidth="1.25"
+          strokeDasharray="3 3"
+          strokeLinecap="round"
+          points={secondaryPointsStr}
+        />
+        <polyline
+          fill="none"
+          stroke={isPositive ? '#4CAF50' : '#F44336'}
+          strokeWidth="2"
+          strokeLinecap="round"
+          points={primaryPointsStr}
+        />
+      </svg>
+    );
+  };
 
   // Render circular complication on the dial
   const renderComplicationItem = (slot: ComplicationSlotId) => {
@@ -275,6 +327,52 @@ export const PixelWatch4Simulator: React.FC<PixelWatch4SimulatorProps> = ({
                   className="w-full flex-1 overflow-y-auto px-6 py-2 space-y-2 scroll-smooth text-center no-scrollbar"
                   style={{ scrollbarWidth: 'none' }}
                 >
+                  {/* Portfolio Daily Score (100-Baseline) Card */}
+                  {portfolioQuote && (() => {
+                    const unnormalizedQuote = toUnnormalizedPortfolioQuote(portfolioQuote);
+                    const activeQuote = isNormalizedMode ? portfolioQuote : unnormalizedQuote;
+                    const secondaryQuote = isNormalizedMode ? unnormalizedQuote : portfolioQuote;
+                    const isPositive = activeQuote.change >= 0;
+                    const trendColor = isPositive ? 'text-[#4CAF50]' : 'text-[#F44336]';
+
+                    return (
+                      <div
+                        onClick={() => setIsNormalizedMode(!isNormalizedMode)}
+                        className="w-full bg-gradient-to-b from-[#132232] to-[#1E1E1E] hover:brightness-110 rounded-[14px] p-2.5 text-left border border-sky-500/20 transition-all cursor-pointer"
+                        title="Tap to toggle Normalized (100%) vs Raw (55.4%) weight mode"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#90CAF9]">
+                            {isNormalizedMode ? 'Portfolio (100%)' : 'Portfolio (55.4%)'}
+                          </span>
+                          <span className={`text-[12px] font-bold font-mono-numbers ${trendColor}`}>
+                            {activeQuote.formattedPercent}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between mt-0.5">
+                          <span className="text-[18px] font-extrabold text-white font-mono-numbers">
+                            {activeQuote.formattedScore}
+                          </span>
+                          <span className="text-[10px] text-[#B0BEC5] font-mono-numbers">
+                            {isNormalizedMode
+                              ? `Raw: ${unnormalizedQuote.formattedScore}`
+                              : `Norm: ${portfolioQuote.formattedScore}`}
+                          </span>
+                        </div>
+                        <div className="mt-1">
+                          {renderPortfolioSparklineSvg(
+                            activeQuote.sparkline,
+                            secondaryQuote.sparkline,
+                            isPositive
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[8px] text-[#78909C] truncate">
+                          Vico 3.3.1 Chart · Tap Norm/Raw · 2h sync
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Category Header */}
                   <div className="pt-1 pb-1">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">

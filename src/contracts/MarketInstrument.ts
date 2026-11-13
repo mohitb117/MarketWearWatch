@@ -44,9 +44,51 @@ export const ALL_INSTRUMENTS: readonly MarketInstrument[] = [
 export const INDICES = ALL_INSTRUMENTS.filter(i => i.category === 'INDEX');
 export const SECTORS = ALL_INSTRUMENTS.filter(i => i.category === 'SECTOR');
 
+export const TOTAL_RAW_PORTFOLIO_WEIGHT_PCT = 59.41;
+
+export function toUnnormalizedPortfolioScore(normalizedScore: number): number {
+  const ratio = TOTAL_RAW_PORTFOLIO_WEIGHT_PCT / 100.0;
+  return Number((100.0 + (normalizedScore - 100.0) * ratio).toFixed(2));
+}
+
+export function toUnnormalizedPortfolioQuote(normalizedQuote: IndexQuote): IndexQuote {
+  const ratio = TOTAL_RAW_PORTFOLIO_WEIGHT_PCT / 100.0;
+  const rawScore = toUnnormalizedPortfolioScore(normalizedQuote.price);
+  const rawChange = Number((rawScore - 100.0).toFixed(2));
+  const rawHigh = toUnnormalizedPortfolioScore(normalizedQuote.dayHigh);
+  const rawLow = toUnnormalizedPortfolioScore(normalizedQuote.dayLow);
+  const rawSparkline = normalizedQuote.sparkline.map(pt =>
+    Number((100.0 + (pt - 100.0) * ratio).toFixed(2))
+  );
+  return new IndexQuote({
+    symbol: normalizedQuote.symbol,
+    name: 'Portfolio Score (55.4% Raw)',
+    price: rawScore,
+    change: rawChange,
+    percentChange: rawChange,
+    dayHigh: rawHigh,
+    dayLow: rawLow,
+    lastUpdated: normalizedQuote.lastUpdated,
+    category: 'PORTFOLIO',
+    sparkline: rawSparkline,
+  });
+}
+
 export function getFallbackQuotes(): IndexQuote[] {
   const now = Date.now();
   return [
+    new IndexQuote({
+      symbol: 'PORTFOLIO',
+      name: 'Portfolio Score',
+      price: 100.84,
+      change: 0.84,
+      percentChange: 0.84,
+      dayHigh: 100.84,
+      dayLow: 99.94,
+      lastUpdated: now,
+      category: 'PORTFOLIO',
+      sparkline: [100.0, 100.12, 99.94, 100.08, 100.24, 100.19, 100.38, 100.52, 100.46, 100.68, 100.61, 100.84],
+    }),
     new IndexQuote({ symbol: 'SPX', name: 'S&P 500', price: 5985.42, change: 22.84, percentChange: 0.38, dayHigh: 6005.10, dayLow: 5960.30, lastUpdated: now, category: 'INDEX', sparkline: [5960, 5970, 5965, 5980, 5985] }),
     new IndexQuote({ symbol: 'NDX', name: 'Nasdaq 100', price: 21110.15, change: -45.20, percentChange: -0.21, dayHigh: 21250.00, dayLow: 21050.80, lastUpdated: now, category: 'INDEX', sparkline: [21155, 21180, 21120, 21090, 21110] }),
     new IndexQuote({ symbol: '^YH101', name: 'Basic Materials', price: 2220463.0, change: 34300.0, percentChange: 1.57, dayHigh: 2250000.0, dayLow: 2190000.0, lastUpdated: now, category: 'SECTOR', sparkline: [2186, 2195, 2204, 2210, 2220] }),

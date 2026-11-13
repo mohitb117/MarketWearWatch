@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.marketwear.indices"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.marketwear.indices"
@@ -35,17 +35,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 composeCompiler {
-    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("compose_compiler_config.conf")
+    stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_compiler_config.conf"))
 }
 
 dependencies {
@@ -63,6 +65,8 @@ dependencies {
     implementation("androidx.wear.compose:compose-material:1.4.0")
     implementation("androidx.wear.compose:compose-foundation:1.4.0")
     implementation("androidx.wear.compose:compose-navigation:1.4.0")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.activity:activity-compose:1.9.2")
 
     // Coroutines & Lifecycle
@@ -71,9 +75,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.5")
 
     // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
     // WorkManager for background sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")
@@ -85,6 +89,11 @@ dependencies {
     // Koin DI
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
+
+    // Vico Compose Chart Library
+    implementation(libs.vico.compose)
+    implementation(libs.vico.compose.m2)
+    implementation(libs.vico.compose.m3)
 
     // Wear OS Standalone Hardware
     compileOnly("com.google.android.wearable:wearable:2.9.0")

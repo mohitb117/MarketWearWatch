@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class InstrumentCategory {
     INDEX,
-    SECTOR
+    SECTOR,
+    PORTFOLIO
 }
 
 @Serializable
@@ -53,6 +54,7 @@ object MarketRegistry {
     fun getFallbackQuotes(): List<IndexQuote> {
         val now = currentTimeMillis()
         return listOf(
+            PortfolioRegistry.createDefaultFallbackPortfolioQuote(now),
             IndexQuote("SPX", "S&P 500", 5985.42, 22.84, 0.38, 6005.10, 5960.30, now, "INDEX"),
             IndexQuote("NDX", "Nasdaq 100", 21110.15, -45.20, -0.21, 21250.00, 21050.80, now, "INDEX"),
             IndexQuote("^YH101", "Basic Materials", 2220463.0, 34300.0, 1.57, 2250000.0, 2190000.0, now, "SECTOR"),
