@@ -29,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -50,6 +49,7 @@ import androidx.wear.compose.material.VignettePosition
 import com.marketwear.indices.data.IndexQuote
 import com.marketwear.indices.ui.MarketUiState
 import com.marketwear.indices.ui.MarketViewModel
+import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MarketWearApp(
     initialSymbol: String,
-    viewModel: MarketViewModel = viewModel()
+    viewModel: MarketViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberScalingLazyListState()

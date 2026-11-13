@@ -30,14 +30,18 @@ import com.marketwear.mobile.MainActivity
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.shared.model.IndexQuote
 import com.marketwear.shared.model.MarketRegistry
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MarketGlanceWidget : GlanceAppWidget() {
+class MarketGlanceWidget : GlanceAppWidget(), KoinComponent {
+
+    private val repository: MobileMarketRepository by inject()
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val quotes = MobileMarketRepository.getInstance().quotes.value.ifEmpty {
+        val quotes = repository.quotes.value.ifEmpty {
             MarketRegistry.getFallbackQuotes()
         }
 

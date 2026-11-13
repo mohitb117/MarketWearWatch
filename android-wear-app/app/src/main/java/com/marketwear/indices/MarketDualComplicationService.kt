@@ -10,14 +10,16 @@ import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.marketwear.indices.data.MarketRepository
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.util.Locale
 
 /**
  * Dual Market Complication: Combines both S&P 500 and Nasdaq 100 into a single slot.
  */
-class MarketDualComplicationService : SuspendingComplicationDataSourceService() {
+class MarketDualComplicationService : SuspendingComplicationDataSourceService(), KoinComponent {
 
-    private val repository by lazy { MarketRepository.getInstance(applicationContext) }
+    private val repository: MarketRepository by inject()
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         val spx = repository.getQuote("SPX")

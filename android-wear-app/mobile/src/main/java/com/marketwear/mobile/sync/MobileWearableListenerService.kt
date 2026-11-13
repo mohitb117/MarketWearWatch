@@ -6,11 +6,13 @@ import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.shared.contracts.WearConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
-class MobileWearableListenerService : WearableListenerService() {
+class MobileWearableListenerService : WearableListenerService(), KoinComponent {
 
-    private val repository by lazy { MobileMarketRepository.getInstance() }
-    private val syncManager by lazy { WearDataSyncManager(applicationContext) }
+    private val repository: MobileMarketRepository by inject()
+    private val syncManager: WearDataSyncManager by inject()
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         if (messageEvent.path == WearConstants.PATH_REQUEST_REFRESH) {

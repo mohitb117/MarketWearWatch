@@ -17,15 +17,19 @@ import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.util.concurrent.TimeUnit
 
 class MarketSyncWorker(
     appContext: Context,
     workerParams: WorkerParameters
-) : CoroutineWorker(appContext, workerParams) {
+) : CoroutineWorker(appContext, workerParams), KoinComponent {
+
+    private val db: MarketDatabase by inject()
+    private val repository: MarketRepository by inject()
 
     override suspend fun doWork(): Result {
-        val db = MarketDatabase.getInstance(applicationContext)
         val quotes = db.indexQuoteDao().getAllQuotes()
         val now = System.currentTimeMillis()
 
@@ -42,7 +46,6 @@ class MarketSyncWorker(
             return Result.success()
         }
 
-        val repository = MarketRepository.getInstance(applicationContext)
         return try {
             repository.refreshWithPhoneFallback(force = true)
             triggerComplicationUpdates(applicationContext)
