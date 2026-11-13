@@ -24,6 +24,7 @@ export const SectorIcon: React.FC<SectorIconProps> = ({ symbol, className = 'w-4
   const props = { className, size: size || 16 };
 
   switch (symbol) {
+    case 'PORTFOLIO':
     case 'SPX':
     case 'NDX':
       return <TrendingUp {...props} />;

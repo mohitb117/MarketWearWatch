@@ -1,18 +1,18 @@
 package com.marketwear.mobile.appfunctions
 
-import androidx.appfunctions.AppFunctionContext
+import androidx.appfunctions.AppFunctionDeclaration
 import androidx.appfunctions.AppFunctionSerializable
-import androidx.appfunctions.service.AppFunction
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.sync.WearDataSyncManager
 import com.marketwear.shared.model.IndexQuote
+import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.platform.isUsMarketWindowActive
 import kotlin.math.abs
 
 /**
  * Structured quote payload returned to system Gemini / AI agents via Android 16 AppFunctions.
  */
-@AppFunctionSerializable
+@AppFunctionSerializable(isDescribedByKDoc = true)
 data class MarketQuoteResponse(
     val symbol: String,
     val name: String,
@@ -28,7 +28,7 @@ data class MarketQuoteResponse(
 /**
  * Full US market snapshot covering S&P 500, Nasdaq 100, and all 11 GICS sectors.
  */
-@AppFunctionSerializable
+@AppFunctionSerializable(isDescribedByKDoc = true)
 data class MarketSummaryResponse(
     val isUsMarketOpenWindow: Boolean,
     val totalInstruments: Int,
@@ -38,11 +38,29 @@ data class MarketSummaryResponse(
 /**
  * Result of refreshing market data and pushing it to the paired Wear OS watch.
  */
-@AppFunctionSerializable
+@AppFunctionSerializable(isDescribedByKDoc = true)
 data class SyncWatchResponse(
     val syncedCount: Int,
     val watchConnected: Boolean,
     val message: String
+)
+
+/**
+ * Portfolio Daily Score payload exposing both Normalized (100% basket) and Unnormalized (59.41% raw weight)
+ * 100-baseline scores and intraday curve points to system Gemini.
+ */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class PortfolioScoreResponse(
+    val normalizedScore: Double,
+    val normalizedChangePercent: Double,
+    val unnormalizedScore: Double,
+    val unnormalizedChangePercent: Double,
+    val trackedHoldingsCount: Int,
+    val rawPortfolioWeightPercent: Double,
+    val dayHighNormalized: Double,
+    val dayLowNormalized: Double,
+    val intradaySparklineNormalized: DoubleArray,
+    val lastUpdatedMillis: Long
 )
 
 private fun IndexQuote.toResponse(): MarketQuoteResponse = MarketQuoteResponse(
@@ -80,13 +98,11 @@ class MarketAppFunctions(
      * Supports symbols like SPX (S&P 500), NDX (Nasdaq 100), YH101-YH311, or sector names
      * such as Technology, Healthcare, Energy, Financials, Utilities, or Industrials.
      *
-     * @param appFunctionContext The AppFunction execution context.
      * @param query Ticker symbol (e.g. SPX, NDX, ^GSPC, YH311) or sector/index display name.
      * @param forceRefresh When true, fetches fresh quotes from Yahoo Finance instead of using cache.
      */
-    @AppFunction
+    @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
     suspend fun getMarketQuote(
-        appFunctionContext: AppFunctionContext,
         query: String,
         forceRefresh: Boolean = false
     ): MarketQuoteResponse {
@@ -112,12 +128,10 @@ class MarketAppFunctions(
      * Gets all tracked US market quotes including S&P 500, Nasdaq 100, and all 11 GICS sectors,
      * along with whether the US market window is currently active.
      *
-     * @param appFunctionContext The AppFunction execution context.
      * @param forceRefresh When true, fetches fresh quotes from Yahoo Finance instead of using cache.
      */
-    @AppFunction
+    @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
     suspend fun getAllMarketQuotes(
-        appFunctionContext: AppFunctionContext,
         forceRefresh: Boolean = false
     ): MarketSummaryResponse {
         val quotes = getOrFetchQuotes(forceRefresh)
@@ -131,13 +145,11 @@ class MarketAppFunctions(
     /**
      * Gets the top moving US market indices and GICS sectors sorted by absolute percentage change.
      *
-     * @param appFunctionContext The AppFunction execution context.
      * @param limit Maximum number of movers to return (clamped between 1 and 13).
      * @param forceRefresh When true, fetches fresh quotes before ranking movers.
      */
-    @AppFunction
+    @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
     suspend fun getTopMarketMovers(
-        appFunctionContext: AppFunctionContext,
         limit: Int = 5,
         forceRefresh: Boolean = false
     ): List<MarketQuoteResponse> {
@@ -149,14 +161,40 @@ class MarketAppFunctions(
     }
 
     /**
-     * Fetches fresh market quotes from Yahoo Finance and pushes them to the paired Wear OS watch.
+     * Gets the 100-baseline daily Portfolio Score across the 37 tracked UBS and Fidelity holdings,
+     * returning both Normalized (100% basket) and Unnormalized (59.41% raw portfolio weight) scores
+     * along with the intraday score curve.
      *
-     * @param appFunctionContext The AppFunction execution context.
+     * @param forceRefresh When true, fetches fresh quotes instead of using cached values.
      */
-    @AppFunction
-    suspend fun refreshAndSyncToWatch(
-        appFunctionContext: AppFunctionContext
-    ): SyncWatchResponse {
+    @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
+    suspend fun getPortfolioScore(
+        forceRefresh: Boolean = false
+    ): PortfolioScoreResponse {
+        val quotes = getOrFetchQuotes(forceRefresh)
+        val normQuote = quotes.firstOrNull { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }
+            ?: PortfolioRegistry.createDefaultFallbackPortfolioQuote(System.currentTimeMillis())
+        val unnormQuote = PortfolioRegistry.toUnnormalizedQuote(normQuote)
+
+        return PortfolioScoreResponse(
+            normalizedScore = normQuote.price,
+            normalizedChangePercent = normQuote.percentChange,
+            unnormalizedScore = unnormQuote.price,
+            unnormalizedChangePercent = unnormQuote.percentChange,
+            trackedHoldingsCount = PortfolioRegistry.HOLDINGS.size,
+            rawPortfolioWeightPercent = PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT,
+            dayHighNormalized = normQuote.dayHigh,
+            dayLowNormalized = normQuote.dayLow,
+            intradaySparklineNormalized = normQuote.sparkline.toDoubleArray(),
+            lastUpdatedMillis = normQuote.lastUpdated
+        )
+    }
+
+    /**
+     * Fetches fresh market quotes from Yahoo Finance and pushes them to the paired Wear OS watch.
+     */
+    @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
+    suspend fun refreshAndSyncToWatch(): SyncWatchResponse {
         val quotes = repository.fetchAllQuotes()
         val connected = syncManager.isWatchConnected()
         if (connected) {

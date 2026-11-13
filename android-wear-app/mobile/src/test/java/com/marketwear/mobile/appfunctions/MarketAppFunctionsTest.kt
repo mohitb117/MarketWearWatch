@@ -1,10 +1,14 @@
 package com.marketwear.mobile.appfunctions
 
-import android.content.Context
-import androidx.appfunctions.AppFunctionContext
 import com.marketwear.mobile.data.KtorMarketClient
 import com.marketwear.mobile.data.MobileMarketRepository
+import com.marketwear.mobile.ui.MobileViewModel
 import com.marketwear.shared.model.IndexQuote
+import com.marketwear.shared.model.MarketRegistry
+import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.ui.PortfolioWeightMode
+import com.marketwear.shared.ui.RefreshState
+import com.marketwear.shared.ui.WatchConnectionState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -20,11 +24,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarketAppFunctionsTest {
-
-    private class FakeAppFunctionContext : AppFunctionContext {
-        override val context: Context
-            get() = throw UnsupportedOperationException("Context not needed in unit test")
-    }
 
     private fun createMockRepository(): MobileMarketRepository {
         val mockEngine = MockEngine { request ->
@@ -66,7 +65,6 @@ class MarketAppFunctionsTest {
     @Test
     fun getMarketQuoteMatchesTickerAliasAndSectorName() = runTest {
         val repo = createMockRepository()
-        // Pre-populate repository cache
         val fetched = repo.fetchAllQuotes()
         assertTrue(fetched.isNotEmpty())
 
@@ -77,6 +75,9 @@ class MarketAppFunctionsTest {
         val tech = matchQuote(fetched, "technology")
         assertEquals("^YH311", tech.symbol)
         assertEquals("Technology", tech.name)
+
+        val portfolio = fetched.first { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }
+        assertEquals(100.0, portfolio.price, 0.01)
     }
 
     @Test
@@ -91,6 +92,40 @@ class MarketAppFunctionsTest {
         assertEquals(2, topMovers.size)
         assertEquals("^YH311", topMovers[0].symbol)
         assertEquals("SPX", topMovers[1].symbol)
+    }
+
+    @Test
+    fun mobileViewModelBuildUiStateUsesEnumStatesAndPartitionsQuotes() {
+        val quotes = MarketRegistry.getFallbackQuotes()
+
+        val normUiState = MobileViewModel.buildUiState(
+            quotes = quotes,
+            weightMode = PortfolioWeightMode.NORMALIZED_100,
+            refreshState = RefreshState.IDLE,
+            watchConnectionState = WatchConnectionState.CONNECTED,
+            lastSyncedTimestamp = 1700000000000L,
+            errorMessage = null
+        )
+
+        assertEquals(PortfolioWeightMode.NORMALIZED_100, normUiState.portfolioState.weightMode)
+        assertEquals(RefreshState.IDLE, normUiState.refreshState)
+        assertEquals(WatchConnectionState.CONNECTED, normUiState.watchConnectionState)
+        assertEquals(2, normUiState.indices.size)
+        assertEquals(11, normUiState.sectors.size)
+
+        val rawUiState = MobileViewModel.buildUiState(
+            quotes = quotes,
+            weightMode = PortfolioWeightMode.RAW_PORTFOLIO,
+            refreshState = RefreshState.REFRESHING,
+            watchConnectionState = WatchConnectionState.DISCONNECTED,
+            lastSyncedTimestamp = 0L,
+            errorMessage = null
+        )
+
+        assertEquals(PortfolioWeightMode.RAW_PORTFOLIO, rawUiState.portfolioState.weightMode)
+        assertEquals(RefreshState.REFRESHING, rawUiState.refreshState)
+        assertEquals(WatchConnectionState.DISCONNECTED, rawUiState.watchConnectionState)
+        assertEquals("Not synced", rawUiState.formattedLastSynced)
     }
 
     private fun matchQuote(quotes: List<IndexQuote>, query: String): IndexQuote {

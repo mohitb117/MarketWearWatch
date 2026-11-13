@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.marketwear.indices.MarketDualComplicationService
 import com.marketwear.indices.NasdaqComplicationService
+import com.marketwear.indices.PortfolioScoreComplicationService
 import com.marketwear.indices.Sp500ComplicationService
 import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.db.MarketDatabase
@@ -84,7 +85,8 @@ class MarketSyncWorker(
             val services = listOf(
                 Sp500ComplicationService::class.java,
                 NasdaqComplicationService::class.java,
-                MarketDualComplicationService::class.java
+                MarketDualComplicationService::class.java,
+                PortfolioScoreComplicationService::class.java
             )
 
             services.forEach { serviceClass ->

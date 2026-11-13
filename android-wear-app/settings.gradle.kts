@@ -21,5 +21,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "MarketWearIndices"
 include(":shared")
+include(":shared-ui")
 include(":app")
 include(":mobile")
+include(":desktop")

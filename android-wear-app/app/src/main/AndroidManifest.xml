@@ -102,5 +102,24 @@
                 android:value="3600" />
         </service>
 
+        <!-- Portfolio Score (100-Baseline) Complication Service -->
+        <service
+            android:name=".PortfolioScoreComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_trend_up"
+            android:label="Portfolio Score"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="SHORT_TEXT,LONG_TEXT,RANGED_VALUE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="3600" />
+        </service>
+
     </application>
 </manifest>

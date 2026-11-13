@@ -13,6 +13,16 @@ kotlin {
         }
     }
 
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
+    js {
+        browser()
+    }
+
     listOf(
         iosX64(),
         iosArm64(),
@@ -46,6 +56,14 @@ kotlin {
             implementation(libs.ktor.client.android)
         }
 
+        getByName("desktopMain").dependencies {
+            implementation(libs.ktor.client.android)
+        }
+
+        getByName("jsMain").dependencies {
+            implementation(libs.ktor.client.js)
+        }
+
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
@@ -54,7 +72,7 @@ kotlin {
 
 android {
     namespace = "com.marketwear.shared"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
