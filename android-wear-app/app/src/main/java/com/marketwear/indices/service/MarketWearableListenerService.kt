@@ -13,10 +13,12 @@ import com.marketwear.shared.contracts.WearConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
-class MarketWearableListenerService : WearableListenerService() {
+class MarketWearableListenerService : WearableListenerService(), KoinComponent {
 
-    private val db by lazy { MarketDatabase.getInstance(applicationContext) }
+    private val db: MarketDatabase by inject()
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         for (event in dataEvents) {

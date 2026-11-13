@@ -12,10 +12,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MobileViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val repository = MobileMarketRepository.getInstance()
-    private val syncManager = WearDataSyncManager(application)
+class MobileViewModel(
+    application: Application,
+    private val repository: MobileMarketRepository,
+    private val syncManager: WearDataSyncManager
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(MobileMarketUiState())
     val uiState: StateFlow<MobileMarketUiState> = _uiState.asStateFlow()

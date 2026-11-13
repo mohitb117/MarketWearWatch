@@ -5,8 +5,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
+import com.marketwear.indices.data.db.IndexQuoteDao
 import com.marketwear.indices.data.db.IndexQuoteEntity
-import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.MarketRegistry
@@ -22,13 +22,14 @@ import kotlinx.coroutines.withContext
  * Repository responsible for managing market indices data using Room as the single source of truth.
  * Supports offloading network sync to paired phone with concurrent standalone fallback.
  */
-class MarketRepository private constructor(private val context: Context) {
+class MarketRepository(
+    private val context: Context,
+    private val dao: IndexQuoteDao,
+    private val sharedClient: SharedMarketClient
+) {
 
-    private val db = MarketDatabase.getInstance(context)
-    private val dao = db.indexQuoteDao()
     private val capabilityClient = Wearable.getCapabilityClient(context)
     private val messageClient = Wearable.getMessageClient(context)
-    private val sharedClient by lazy { SharedMarketClient() }
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
@@ -41,15 +42,6 @@ class MarketRepository private constructor(private val context: Context) {
     companion object {
         private const val ACTIVE_FRESHNESS_MS = 5 * 60 * 1000L       // 5 minutes during market hours
         private const val OFF_HOURS_FRESHNESS_MS = 6 * 60 * 60 * 1000L // 6 hours overnight/weekends
-
-        @Volatile
-        private var INSTANCE: MarketRepository? = null
-
-        fun getInstance(context: Context): MarketRepository {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: MarketRepository(context.applicationContext).also { INSTANCE = it }
-            }
-        }
     }
 
     /**

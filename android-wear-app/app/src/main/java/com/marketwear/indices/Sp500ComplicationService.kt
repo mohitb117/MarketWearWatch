@@ -17,15 +17,17 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.IndexQuote
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.util.Locale
 
 /**
  * Android Wear OS Complication Provider for S&P 500 (^GSPC).
  * Designed for high legibility on Google Pixel Watch circular displays.
  */
-class Sp500ComplicationService : SuspendingComplicationDataSourceService() {
+class Sp500ComplicationService : SuspendingComplicationDataSourceService(), KoinComponent {
 
-    private val repository by lazy { MarketRepository.getInstance(applicationContext) }
+    private val repository: MarketRepository by inject()
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? {
         val quote = repository.getQuote("SPX")

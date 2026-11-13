@@ -20,9 +20,11 @@ data class MarketUiState(
     val lastUpdated: Long = 0L
 )
 
-class MarketViewModel(application: Application) : AndroidViewModel(application) {
+class MarketViewModel(
+    application: Application,
+    private val repository: MarketRepository
+) : AndroidViewModel(application) {
 
-    private val repository = MarketRepository.getInstance(application)
     private val _isRefreshing = MutableStateFlow(false)
 
     val uiState: StateFlow<MarketUiState> = combine(

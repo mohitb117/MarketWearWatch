@@ -82,6 +82,10 @@ dependencies {
     implementation(libs.play.services.wearable)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
+    // Koin DI
+    implementation(libs.koin.android)
+    implementation(libs.koin.androidx.compose)
+
     // Wear OS Standalone Hardware
     compileOnly("com.google.android.wearable:wearable:2.9.0")
 }

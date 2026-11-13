@@ -12,12 +12,17 @@ import androidx.work.WorkerParameters
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.widget.MarketGlanceWidget
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import java.util.concurrent.TimeUnit
 
 class MobileSyncWorker(
     appContext: Context,
     workerParams: WorkerParameters
-) : CoroutineWorker(appContext, workerParams) {
+) : CoroutineWorker(appContext, workerParams), KoinComponent {
+
+    private val repository: MobileMarketRepository by inject()
+    private val syncManager: WearDataSyncManager by inject()
 
     override suspend fun doWork(): Result {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -30,7 +35,6 @@ class MobileSyncWorker(
         }
 
         return try {
-            val repository = MobileMarketRepository.getInstance()
             val quotes = repository.fetchAllQuotes()
 
             prefs.edit().putLong(KEY_LAST_BG_SYNC, now).apply()
@@ -41,7 +45,6 @@ class MobileSyncWorker(
                 // Ignore widget update errors in background
             }
 
-            val syncManager = WearDataSyncManager(applicationContext)
             if (syncManager.isWatchConnected()) {
                 // Non-urgent background sync lets Play Services batch Bluetooth/Wi-Fi transmissions
                 syncManager.syncQuotesToWatch(quotes, urgent = false)
