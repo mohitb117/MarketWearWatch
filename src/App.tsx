@@ -16,6 +16,7 @@ import { MarketIndicesStrip } from './components/MarketIndicesStrip';
 import { ComplicationConfigurator } from './components/ComplicationConfigurator';
 import { AndroidCodeViewer } from './components/AndroidCodeViewer';
 import { InstallationGuide } from './components/InstallationGuide';
+import { SystemDiagrams } from './components/SystemDiagrams';
 import { generateWearOsProjectZip, downloadBlob } from './utils/zipExport';
 import {
   Download,
@@ -27,10 +28,12 @@ import {
   RotateCw,
   Cpu,
   CheckCircle2,
+  BatteryCharging,
+  Network,
 } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'simulator' | 'config' | 'source' | 'install'>('simulator');
+  const [activeTab, setActiveTab] = useState<'simulator' | 'architecture' | 'config' | 'source' | 'install'>('simulator');
   const [activeSurface, setActiveSurface] = useState<'watch' | 'widget' | 'mobile'>('watch');
 
   const [marketState, setMarketState] = useState<MarketState>(() => {
@@ -163,7 +166,7 @@ export default function App() {
                 v2.0
               </span>
             </div>
-            <div className="text-[11px] text-neutral-400">Wear OS &amp; Android Companion</div>
+            <div className="text-[11px] text-neutral-400">KMP · Koin DI · Wear OS &amp; Mobile</div>
           </div>
         </div>
 
@@ -176,6 +179,14 @@ export default function App() {
             }`}
           >
             Interactive Surfaces
+          </button>
+          <button
+            onClick={() => setActiveTab('architecture')}
+            className={`transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'architecture' ? 'text-white font-semibold' : 'hover:text-neutral-200'
+            }`}
+          >
+            System Diagrams
           </button>
           <button
             onClick={() => setActiveTab('config')}
@@ -226,15 +237,15 @@ export default function App() {
               <span>·</span>
               <span>Galaxy Z Fold 6</span>
               <span>·</span>
-              <span className="text-emerald-400 font-medium">11 US Sectors (^YH101 - ^YH311)</span>
+              <span className="text-purple-400 font-medium">KMP + Koin 4.0.0 DI</span>
               <span>·</span>
-              <span>Wearable Data Layer</span>
+              <span className="text-emerald-400 font-medium">Battery-Optimized Sync</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              Financial Market Ecosystem for Wear OS &amp; Android
+              Financial Market Ecosystem for Wear OS, Android &amp; KMP
             </h1>
             <p className="text-sm text-neutral-400 mt-1 max-w-2xl">
-              Cross-device financial intelligence for Pixel Watch dials, Wear OS apps, Android companion dashboard, and Jetpack Glance widgets with zero battery drain.
+              Cross-device financial intelligence powered by a Kotlin Multiplatform shared core, Koin DI, Room cache, and market-hours-aware background sync for minimal watch battery drain.
             </p>
           </div>
 
@@ -247,6 +258,14 @@ export default function App() {
               }`}
             >
               Surfaces
+            </button>
+            <button
+              onClick={() => setActiveTab('architecture')}
+              className={`px-3 py-1.5 font-medium rounded-md transition-colors ${
+                activeTab === 'architecture' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              Diagrams
             </button>
             <button
               onClick={() => setActiveTab('config')}
@@ -436,26 +455,66 @@ export default function App() {
                       <span>Material 3 Mobile Companion</span>
                     </div>
                     <p className="leading-relaxed text-neutral-400">
-                      The phone companion offloads all battery-heavy operations from the watch. It polls the Yahoo Finance v8 API concurrently with Ktor Android engine (~800ms) and pushes the serialized JSON payload via Google Play Services <code className="text-sky-300">DataClient</code> directly into the watch's Room DB.
+                      The phone companion offloads all battery-heavy operations from the watch. It polls the Yahoo Finance v8 API concurrently via KMP <code className="text-sky-300">SharedMarketClient</code> (injected with Koin) and pushes serialized quotes through Google Play Services <code className="text-sky-300">DataClient</code> without waking the watch on background syncs.
                     </p>
                     <div className="space-y-2 pt-2 border-t border-neutral-800">
                       <div className="flex justify-between">
-                        <span className="text-neutral-500">Networking</span>
-                        <span className="font-mono text-neutral-300">Ktor async / awaitAll</span>
+                        <span className="text-neutral-500">Shared KMP Engine</span>
+                        <span className="font-mono text-neutral-300">Ktor async / awaitAll (~800ms)</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-neutral-500">Sync Path</span>
-                        <span className="font-mono text-neutral-300">/market/quotes</span>
+                        <span className="text-neutral-500">Background Cadence</span>
+                        <span className="font-mono text-neutral-300">30m + off-hours 6h gate</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-neutral-500">Offloading Policy</span>
-                        <span className="font-mono text-neutral-300">Preserves watch radio &amp; battery</span>
+                        <span className="font-mono text-neutral-300">Non-urgent DataClient batching</span>
                       </div>
                     </div>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Engineering & Architecture Highlights */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <Cpu className="w-4 h-4 text-purple-400" />
+                  <span>Kotlin Multiplatform (:shared)</span>
+                </div>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Shared <code className="text-purple-300">commonMain</code> models, <code className="text-purple-300">SharedMarketClient</code> (concurrent Ktor <code className="text-purple-300">async/awaitAll</code>), and <code className="text-purple-300">isUsMarketWindowActive()</code> compile for Android, Wear OS, and iOS (<code className="text-purple-300">MarketWearShared</code>).
+                </p>
+              </div>
+
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <Network className="w-4 h-4 text-sky-400" />
+                  <span>Koin 4.0.0 Dependency Injection</span>
+                </div>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Zero-KSP pure-Kotlin DI graph uniting <code className="text-sky-300">sharedModule</code>, <code className="text-sky-300">mobileModule</code>, and <code className="text-sky-300">wearModule</code>, with <code className="text-sky-300">initKoin()</code> for iOS Swift, <code className="text-sky-300">koinViewModel()</code> for Compose, and <code className="text-sky-300">KoinComponent</code> for Workers and Complications.
+                </p>
+              </div>
+
+              <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
+                <div className="flex items-center gap-2 text-sm font-bold text-white">
+                  <BatteryCharging className="w-4 h-4 text-emerald-400" />
+                  <span>Battery &amp; Radio Optimizations</span>
+                </div>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Market-hours sync gating skips overnight/weekend polling when cache is &lt;6h old, Room freshness guards prevent redundant fetches, retry-storm suppression avoids backoff wakeups, and complications read offline Room DB (<code className="text-emerald-300">3600s</code> period).
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB CONTENT: System Diagrams */}
+        {activeTab === 'architecture' && (
+          <div className="space-y-6">
+            <SystemDiagrams />
           </div>
         )}
 

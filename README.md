@@ -2,14 +2,15 @@
 
 [![Live Showcase](https://img.shields.io/badge/Live%20Showcase-GitHub%20Pages-brightgreen.svg)](https://mohitb117.github.io/MarketWearWatch/)
 [![Build Android APKs](https://github.com/mohitb117/MarketWearWatch/actions/workflows/build-apks.yml/badge.svg)](https://github.com/mohitb117/MarketWearWatch/actions/workflows/build-apks.yml)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-purple.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.20%20KMP-purple.svg)](https://kotlinlang.org)
+[![Koin](https://img.shields.io/badge/Koin-4.0.0%20DI-blueviolet.svg)](https://insert-koin.io)
 [![Wear OS](https://img.shields.io/badge/Wear%20OS-5.0%20%2F%20API%2034-blue.svg)](https://developer.android.com/wear)
 [![Jetpack Compose](https://img.shields.io/badge/Compose-Wear%20%26%20Mobile-green.svg)](https://developer.android.com/jetpack/compose)
 [![Glance Widget](https://img.shields.io/badge/Jetpack%20Glance-1.1.0-brightgreen.svg)](https://developer.android.com/jetpack/compose/glance)
 [![Play Services](https://img.shields.io/badge/Wearable%20Data%20Layer-18.2.0-orange.svg)](https://developers.google.com/android/reference/com/google/android/gms/wearable/package-summary)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**MarketWear** is a multi-device financial tracking ecosystem built for **Google Pixel Watch (Wear OS)** and **Android Mobile (Companion & Glance Widget)**. It provides real-time and cached market intelligence—featuring the **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors**—with zero battery penalty, rotary crown navigation, watch face complications, and cross-device background synchronization.
+**MarketWear** is a multi-device financial tracking ecosystem built with **Kotlin Multiplatform (KMP)**, **Koin 4.0.0 DI**, **Google Pixel Watch (Wear OS)**, and **Android Mobile (Companion & Glance Widget)**—with iOS-ready shared networking, models, and market-window logic in `:shared`. It provides real-time and cached market intelligence—featuring the **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors**—with battery-aware background synchronization, rotary crown navigation, and watch face complications.
 
 👉 **[Try the Interactive Web Showcase & Simulator](https://mohitb117.github.io/MarketWearWatch/)** directly in your browser.
 
@@ -25,44 +26,47 @@ flowchart TD
         YF["Yahoo Finance v8 Chart API"]
     end
 
-    subgraph PhoneDevice ["Android Mobile Companion (:mobile)"]
-        PhoneUI["Material 3 Dashboard (MobileDashboardScreen)"]
-        KtorClient["Ktor Market Client (async / awaitAll)"]
-        PhoneRepo["Mobile Market Repository"]
-        WorkMgr["WorkManager (15-min Periodic Sync)"]
-        GlanceWidget["Jetpack Glance AppWidget (MarketGlanceWidget)"]
-        WearSyncMgr["WearDataSyncManager (DataClient)"]
+    subgraph PhoneDevice ["Android Mobile Companion (:mobile · mobileModule)"]
+        PhoneUI["Material 3 Dashboard (koinViewModel)"]
+        SharedClient["KMP SharedMarketClient (Ktor async / awaitAll, 10s timeout)"]
+        PhoneRepo["MobileMarketRepository (Koin Singleton)"]
+        WorkMgr["MobileSyncWorker (30m + Off-Hours 6h Gate)"]
+        GlanceWidget["Jetpack Glance AppWidget (KoinComponent)"]
+        WearSyncMgr["WearDataSyncManager (Non-Urgent DataClient)"]
 
-        WorkMgr -->|Trigger| KtorClient
-        PhoneUI -->|Manual Refresh| KtorClient
-        KtorClient -->|Fetch Quotes| YF
-        KtorClient -->|Quotes| PhoneRepo
+        WorkMgr -->|isUsMarketWindowActive?| SharedClient
+        PhoneUI -->|Manual Refresh| SharedClient
+        SharedClient -->|Concurrent Fetch| YF
+        SharedClient -->|Quotes| PhoneRepo
         PhoneRepo --> PhoneUI
         PhoneRepo -->|Update State| GlanceWidget
-        PhoneRepo -->|Push Payload| WearSyncMgr
+        PhoneRepo -->|Coalesced Payload| WearSyncMgr
     end
 
     subgraph WearableLayer ["Google Play Services Wearable Data Layer"]
-        DataClientMsg["DataClient: /market/quotes (PutDataMapRequest)"]
+        DataClientMsg["DataClient: /market/quotes (Non-Urgent PutDataMapRequest)"]
         MsgClientReq["MessageClient: /market/request_refresh"]
     end
 
-    subgraph WatchDevice ["Wear OS Watch (:app)"]
+    subgraph WatchDevice ["Wear OS Watch (:app · wearModule)"]
         ListenerSvc["MarketWearableListenerService (WakeLock)"]
         RoomDB[("Room Database (IndexQuoteEntity)")]
-        WatchRepo["MarketRepository"]
-        WatchVM["MarketViewModel"]
+        WatchRepo["MarketRepository (Koin + SharedMarketClient)"]
+        WatchWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
+        WatchVM["MarketViewModel (koinViewModel)"]
         WatchUI["Wear Compose (ScalingLazyColumn + Rotary)"]
-        ComplicationSvc["SuspendingComplicationDataSourceService"]
+        ComplicationSvc["Complication Services (Offline Room, 3600s Period)"]
 
         WatchUI -->|Crown / Tap Refresh| WatchRepo
+        WatchWorker -->|Skip if Fresh| RoomDB
+        WatchWorker -->|Refresh if Stale| WatchRepo
         WatchRepo -->|Delegate Fetch| MsgClientReq
         DataClientMsg -->|Receive OnDataChanged| ListenerSvc
         ListenerSvc -->|Upsert Payload| RoomDB
         RoomDB -->|Flow Observation| WatchRepo
         WatchRepo --> WatchVM
         WatchVM --> WatchUI
-        RoomDB -->|Instant Dial Cache| ComplicationSvc
+        RoomDB -->|Zero-Network Dial Read| ComplicationSvc
     end
 
     WearSyncMgr -->|Push /market/quotes| DataClientMsg
@@ -71,45 +75,82 @@ flowchart TD
 
 ---
 
-## Multi-Module Dependency Architecture
+## Multi-Module KMP & Koin DI Architecture
 
 ```mermaid
 flowchart LR
-    subgraph SharedModule [":shared Module"]
-        DomainModels["IndexQuote (@Immutable)"]
-        Registry["MarketInstrument & MarketRegistry"]
-        SyncProtocol["Protocol Paths & Constants"]
+    subgraph SharedModule [":shared KMP Module (commonMain / androidMain / iosMain)"]
+        DomainModels["IndexQuote & MarketRegistry"]
+        SharedClient["SharedMarketClient (Ktor async / awaitAll)"]
+        MarketWindow["isUsMarketWindowActive()"]
+        SyncProtocol["WearConstants"]
+        SharedDI["sharedModule & initKoin() (Koin 4.0.0)"]
     end
 
     subgraph MobileModule [":mobile Module (Phone & Widget)"]
-        MobileUI["Mobile Dashboard Screen (Material 3)"]
-        KtorEngine["Ktor Network Engine (Parallel Fetching)"]
-        GlanceApp["Glance AppWidget (Jetpack Glance 1.1.0)"]
-        SyncWorker["MobileSyncWorker (WorkManager)"]
-        DataClientPhone["WearDataSyncManager (DataClient)"]
+        MobileDI["mobileModule (Koin)"]
+        MobileUI["MobileDashboardScreen (koinViewModel)"]
+        GlanceApp["MarketGlanceWidget (KoinComponent)"]
+        SyncWorker["MobileSyncWorker (30m + Off-Hours Guard)"]
+        DataClientPhone["WearDataSyncManager (Non-Urgent DataClient)"]
     end
 
     subgraph AppModule [":app Module (Wear OS)"]
-        WearUI["Wear Compose Screen (ScalingLazyColumn)"]
-        RotaryHandler["Rotary Crown Handler (Locked 60 FPS)"]
-        RoomLocal["Room Persistence (Local Offline Store)"]
-        Complications["WatchFace Complications API"]
-        WearListener["MarketWearableListenerService"]
+        WearDI["wearModule (Koin)"]
+        WearUI["Wear Compose Screen (koinViewModel)"]
+        RoomLocal["Room Persistence (MarketDatabase)"]
+        Complications["Complications (Offline Room, 3600s Period)"]
+        WearWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
     end
 
-    MobileUI --> DomainModels
-    MobileUI --> Registry
-    KtorEngine --> DomainModels
-    GlanceApp --> DomainModels
-    DataClientPhone --> SyncProtocol
-    SyncWorker --> KtorEngine
+    subgraph IosTarget ["iOS Target (Swift / Xcode)"]
+        IosFramework["MarketWearShared.xcframework"]
+        IosCall["KoinHelperKt.initKoin() / SharedDi"]
+    end
 
-    WearUI --> DomainModels
-    WearUI --> Registry
-    RoomLocal --> DomainModels
-    Complications --> DomainModels
-    WearListener --> SyncProtocol
+    MobileDI --> SharedDI
+    WearDI --> SharedDI
+    IosTarget --> IosFramework
+    IosFramework --> SharedDI
+    MobileUI --> DomainModels
+    SyncWorker --> SharedClient
+    SyncWorker --> MarketWindow
+    DataClientPhone --> SyncProtocol
+    WearWorker --> SharedClient
+    WearWorker --> MarketWindow
+    Complications --> RoomLocal
 ```
+
+---
+
+## Kotlin Multiplatform (KMP) & Koin 4.0.0 DI
+
+MarketWear uses **Koin 4.0.0** for pure-Kotlin dependency injection across `:shared`, `:mobile`, and `:app`—with zero annotation-processing/KSP overhead and full Kotlin/Native iOS compatibility:
+
+- **`:shared` (`commonMain` / `androidMain` / `iosMain`)**:
+  - `sharedModule` provides the platform `HttpClient` (`expect`/`actual createPlatformHttpClient()` backed by Ktor `Android` on Android/Wear and `Darwin` on iOS) and `SharedMarketClient`.
+  - `KoinHelper.kt` exposes `initKoin(extraModules, appDeclaration)` for Android `Application` classes, plus a zero-arg `initKoin()` and `SharedDi` object for iOS Swift callers.
+  - `commonTest` includes `KoinModuleTest` to verify singleton resolution across KMP targets.
+- **`:mobile`**:
+  - `mobileModule` wires `KtorMarketClient`, `MobileMarketRepository`, `WearDataSyncManager`, and `MobileViewModel` (injected via `koinViewModel()` in Compose).
+  - `MobileSyncWorker`, `MobileWearableListenerService`, and `MarketGlanceWidget` resolve shared singletons via `KoinComponent`.
+- **`:app` (Wear OS)**:
+  - `wearModule` wires `MarketDatabase`, `IndexQuoteDao`, `MarketRepository`, and `MarketViewModel` (`koinViewModel()`).
+  - `MarketSyncWorker`, `MarketWearableListenerService`, and complication services (`Sp500ComplicationService`, `NasdaqComplicationService`, `MarketDualComplicationService`) inject `MarketRepository` / `MarketDatabase` via `KoinComponent`.
+
+---
+
+## Battery & Network Optimization Architecture
+
+Wear OS and companion background syncs are engineered to minimize radio wakeups and CPU time:
+
+| Optimization | Module(s) | Behavior |
+| :--- | :--- | :--- |
+| **Market-Hours Sync Gating** | `:shared`, `:mobile`, `:app` | `isUsMarketWindowActive()` checks US Eastern market hours (`09:00–16:30 ET`, Mon–Fri). Overnight and on weekends, workers skip network polling if cached quotes are `< 6 hours` old. |
+| **Concurrent Ktor Fetching** | `:shared` | `SharedMarketClient.fetchAllQuotes()` fans out all 13 ticker requests concurrently via `async`/`awaitAll` with a `10s` per-request timeout, cutting radio-on time to ~800ms. |
+| **Freshness & Retry-Storm Guards** | `:app`, `:mobile` | `MarketSyncWorker` skips sync if Room quotes are within `45 min` (active hours) or `6 hours` (off-hours). Workers return `Result.success()` instead of `Result.retry()` on transient network errors to avoid exponential backoff wakeup storms. |
+| **Non-Urgent Data Layer Push** | `:mobile` | Background `WearDataSyncManager` pushes omit `setUrgent()`, allowing Google Play Services to coalesce Bluetooth/Wi-Fi transmissions rather than waking the watch immediately. |
+| **Offline-Only Complications** | `:app` | Watch face complication services read strictly from local Room DB with zero network calls and use `UPDATE_PERIOD_SECONDS = 3600` (1 hour). |
 
 ---
 
@@ -125,14 +166,15 @@ sequenceDiagram
     participant WatchRepo as Watch Repository
     participant NodeClient as Play Services NodeClient
     participant PhoneListener as Phone WearableListenerService
-    participant KtorClient as Phone Ktor Client
+    participant KtorClient as KMP SharedMarketClient
     participant YahooAPI as Yahoo Finance API
     participant DataClient as Play Services DataClient
     participant WatchService as Watch WearableListenerService
     participant RoomDB as Watch Room DB
 
-    User->>WatchUI: Tap Refresh or Rotary Pull
-    WatchUI->>WatchRepo: refreshQuotes()
+    Note over WatchRepo,RoomDB: Background Worker checks Room freshness (45m active / 6h off-hours)
+    User->>WatchUI: Tap Refresh or Worker Triggers (Stale Cache)
+    WatchUI->>WatchRepo: refreshWithPhoneFallback()
     WatchRepo->>NodeClient: getConnectedNodes()
 
     alt Phone Connected (Nearby / BT / Wi-Fi)
@@ -141,11 +183,11 @@ sequenceDiagram
         activate PhoneListener
         PhoneListener->>KtorClient: fetchAllQuotes()
         activate KtorClient
-        KtorClient->>YahooAPI: Parallel async/awaitAll (13 tickers)
+        KtorClient->>YahooAPI: Concurrent async/awaitAll (13 tickers, 10s timeout)
         YahooAPI-->>KtorClient: JSON Quote Responses (~800ms)
         KtorClient-->>PhoneListener: List of IndexQuote
         deactivate KtorClient
-        PhoneListener->>DataClient: PutDataMapRequest: /market/quotes (JSON Payload)
+        PhoneListener->>DataClient: PutDataMapRequest: /market/quotes (Non-Urgent on BG Sync)
         deactivate PhoneListener
         activate DataClient
         DataClient-->>WatchService: onDataChanged(dataEvents)
@@ -158,9 +200,9 @@ sequenceDiagram
         WatchUI-->>User: Screen shows fresh prices
     else Phone Disconnected / Standalone Watch
         NodeClient-->>WatchRepo: No Connected Phone Nodes
-        Note over WatchRepo: Graceful Fallback to Direct Watch Network
-        WatchRepo->>YahooAPI: Direct HTTP Fetch via Watch Ktor Engine
-        YahooAPI-->>WatchRepo: JSON Responses
+        Note over WatchRepo: Graceful Fallback via Koin-injected SharedMarketClient
+        WatchRepo->>YahooAPI: Direct Concurrent Ktor Fetch
+        YahooAPI-->>WatchRepo: JSON Responses (or Result.success() on transient error)
         WatchRepo->>RoomDB: upsertQuotes(quotes)
         WatchRepo-->>WatchUI: Flow emits updated state
         WatchUI-->>User: Screen shows fresh prices
@@ -241,35 +283,43 @@ MarketWearWatch/
 ├── README.md                                # Root Architectural Documentation
 ├── android-wear-app/
 │   ├── app/                                 # Wear OS Application Module (:app)
-│   │   ├── src/main/java/.../indices/
-│   │   │   ├── MainActivity.kt              # ScalingLazyColumn Wear Compose UI
-│   │   │   ├── data/
-│   │   │   │   ├── MarketRepository.kt      # Node delegation & fallback repo
-│   │   │   │   ├── local/                   # Room DB (IndexQuoteDao, AppDatabase)
-│   │   │   ├── complication/                # SuspendingComplicationDataSourceService
-│   │   │   └── service/                     # MarketWearableListenerService (DataClient)
-│   │   └── src/main/res/drawable/           # Vector icons (ic_sector_*.xml)
+│   │   └── src/main/java/com/marketwear/indices/
+│   │       ├── MarketWearApplication.kt     # Initializes Koin (sharedModule + wearModule)
+│   │       ├── MainActivity.kt              # ScalingLazyColumn Wear Compose UI (koinViewModel)
+│   │       ├── di/WearModule.kt             # Koin Wear OS module
+│   │       ├── data/
+│   │       │   ├── MarketRepository.kt      # Node delegation & standalone fallback repo
+│   │       │   └── db/                      # Room DB (MarketDatabase, IndexQuoteDao)
+│   │       ├── sync/MarketSyncWorker.kt     # 45m / 6h freshness-guarded WorkManager sync
+│   │       ├── *ComplicationService.kt      # Offline Room WatchFace Complications (3600s)
+│   │       └── service/MarketWearableListenerService.kt
 │   ├── mobile/                              # Android Companion App (:mobile)
-│   │   ├── src/main/java/.../mobile/
-│   │   │   ├── MobileMainActivity.kt        # Material 3 Companion Activity
-│   │   │   ├── ui/                          # MobileDashboardScreen & ViewModels
-│   │   │   ├── data/
-│   │   │   │   ├── KtorMarketClient.kt      # Parallel async/awaitAll HTTP Engine
-│   │   │   │   └── MobileMarketRepository.kt# WorkManager sync & quote persistence
-│   │   │   ├── sync/
-│   │   │   │   ├── MobileSyncWorker.kt      # 15-minute background periodic sync
-│   │   │   │   └── WearDataSyncManager.kt   # PutDataMapRequest DataClient publisher
-│   │   │   └── widget/
-│   │   │       ├── MarketGlanceWidget.kt    # Jetpack Glance 1.1.0 Home Screen Widget
-│   │   │       └── MarketWidgetReceiver.kt  # GlanceAppWidgetReceiver
-│   │   └── proguard-rules.pro               # Mobile R8 rules
-│   └── shared/                              # Shared Kotlin Domain Module (:shared)
-│       └── src/main/java/.../shared/
-│           ├── model/
-│           │   ├── IndexQuote.kt            # @Immutable Quote entity
-│           │   └── MarketInstrument.kt      # 13 instrument registry & sector metadata
-│           └── sync/
-│               └── WearableProtocol.kt      # Paths, keys, and sync contracts
+│   │   └── src/main/java/com/marketwear/mobile/
+│   │       ├── MarketMobileApplication.kt   # Initializes Koin (sharedModule + mobileModule)
+│   │       ├── MobileMainActivity.kt        # Material 3 Companion Activity
+│   │       ├── di/MobileModule.kt           # Koin Mobile module
+│   │       ├── ui/                          # MobileDashboardScreen & MobileViewModel
+│   │       ├── data/
+│   │       │   ├── KtorMarketClient.kt      # Wraps SharedMarketClient
+│   │       │   └── MobileMarketRepository.kt
+│   │       ├── sync/
+│   │       │   ├── MobileSyncWorker.kt      # 30-min periodic sync w/ off-hours guard
+│   │       │   └── WearDataSyncManager.kt   # Non-urgent PutDataMapRequest DataClient push
+│   │       └── widget/
+│   │           ├── MarketGlanceWidget.kt    # Jetpack Glance 1.1.0 Home Screen Widget
+│   │           └── MarketWidgetReceiver.kt  # GlanceAppWidgetReceiver
+│   └── shared/                              # Kotlin Multiplatform Module (:shared)
+│       ├── src/commonMain/kotlin/com/marketwear/shared/
+│       │   ├── contracts/WearConstants.kt   # Wearable Data Layer paths & keys
+│       │   ├── di/
+│       │   │   ├── SharedModule.kt          # Koin sharedModule (HttpClient, SharedMarketClient)
+│       │   │   └── KoinHelper.kt            # initKoin() & SharedDi for Android/iOS
+│       │   ├── model/                       # IndexQuote & MarketRegistry (13 instruments)
+│       │   ├── network/SharedMarketClient.kt# Concurrent Ktor Yahoo Finance v8 client
+│       │   └── platform/Platform.kt         # expect/actual HttpClient & isUsMarketWindowActive()
+│       ├── src/androidMain/kotlin/...       # Android Ktor engine & java.time market window
+│       ├── src/iosMain/kotlin/...           # Darwin Ktor engine & NSDate/NSTimeZone window
+│       └── src/commonTest/kotlin/...        # Shared KoinModuleTest & SharedMarketClientTest
 └── docs/superpowers/                        # Specs, PRDs, and testing plans
 ```
 
@@ -282,12 +332,14 @@ MarketWearWatch/
 - **JDK 21** (`/opt/homebrew/opt/openjdk@21`)
 - **Android SDK Platform 35** / Wear OS 5 (API 34)
 
-### Command-Line Build
-To build release APKs with full R8 optimization enabled:
+### Command-Line Build & KMP Tests
+To run unit tests across `:shared` and `:mobile`, build release APKs with full R8 optimization, and verify iOS KMP compilation (on macOS):
 
 ```bash
 cd android-wear-app
-./gradlew assembleRelease
+./gradlew :shared:testDebugUnitTest :mobile:testDebugUnitTest :app:assembleRelease :mobile:assembleRelease
+# Optional iOS KMP framework/target compilation (macOS + Xcode):
+./gradlew :shared:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosArm64
 ```
 
 Generated APKs:
