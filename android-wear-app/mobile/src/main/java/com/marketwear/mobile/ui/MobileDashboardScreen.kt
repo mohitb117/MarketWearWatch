@@ -48,7 +48,7 @@ fun MobileDashboardScreen(
     MobileDashboardContent(
         uiState = uiState,
         onToggleWeightMode = viewModel::togglePortfolioWeightMode,
-        onRefreshAndSync = viewModel::refreshAndSync
+        onRefreshAndSync = { viewModel.refreshAndSync(forceRefresh = true) }
     )
 }
 

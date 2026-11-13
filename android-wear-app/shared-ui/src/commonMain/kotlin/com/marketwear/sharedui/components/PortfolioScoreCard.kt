@@ -1,8 +1,10 @@
 package com.marketwear.sharedui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,8 +20,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -42,6 +46,8 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
@@ -76,162 +82,226 @@ fun PortfolioScoreCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(modifier = Modifier.padding(MarketWearDimens.CardPadding)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Portfolio Daily Score",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "37 UBS & Fidelity Holdings · 100.0 Morning Baseline",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val isCompactWidth = maxWidth < 380.dp
+
+            Column(modifier = Modifier.padding(MarketWearDimens.CardPadding)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = MarketWearDimens.SmallSpacing)
+                    ) {
+                        Text(
+                            text = "Portfolio Daily Score",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "37 UBS & Fidelity Holdings · 100.0 Morning Baseline",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                MarketWearShapes.TogglePill
+                            )
+                            .clickable(onClick = onToggleWeightMode)
+                            .padding(horizontal = 10.dp, vertical = MarketWearDimens.SmallSpacing),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = state.mobileModePillLabel,
+                            fontSize = MarketWearTextSizes.ModePill,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant,
-                            MarketWearShapes.TogglePill
+                Spacer(modifier = Modifier.height(MarketWearDimens.ItemSpacing))
+
+                if (isCompactWidth) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        PrimaryScoreBlock(
+                            state = state,
+                            trendColor = trendColor,
+                            singleLineDelta = true
                         )
-                        .clickable(onClick = onToggleWeightMode)
-                        .padding(horizontal = 10.dp, vertical = MarketWearDimens.SmallSpacing),
+                        Spacer(modifier = Modifier.height(MarketWearDimens.TinySpacing))
+                        Text(
+                            text = "${state.mobileSecondarySummary} · ${state.mobileRangeSummary}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        PrimaryScoreBlock(
+                            state = state,
+                            trendColor = trendColor,
+                            singleLineDelta = false,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = MarketWearDimens.SmallSpacing)
+                        )
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = state.mobileSecondarySummary,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = state.mobileRangeSummary,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(MarketWearDimens.ItemSpacing))
+
+                val modelProducer = remember { CartesianChartModelProducer() }
+                LaunchedEffect(state.primarySparkline, state.secondarySparkline) {
+                    modelProducer.runTransaction {
+                        lineModel {
+                            series(state.primarySparkline)
+                            series(state.secondarySparkline)
+                        }
+                    }
+                }
+
+                val primaryLine = LineCartesianLayer.rememberLine(
+                    fill = remember(trendColor) { LineCartesianLayer.LineFill.single(Fill(trendColor)) },
+                    stroke = remember {
+                        LineCartesianLayer.LineStroke.Continuous(
+                            thickness = MarketWearDimens.PrimaryLineThickness,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                )
+                val secondaryLine = LineCartesianLayer.rememberLine(
+                    fill = remember { LineCartesianLayer.LineFill.single(Fill(MarketWearPalette.SecondaryCurve)) },
+                    stroke = remember {
+                        LineCartesianLayer.LineStroke.Dashed(
+                            thickness = MarketWearDimens.SecondaryLineThickness,
+                            cap = StrokeCap.Round,
+                            dashLength = MarketWearDimens.DashedLineLength,
+                            gapLength = MarketWearDimens.DashedGapLength
+                        )
+                    }
+                )
+                val baselineLine = rememberLineComponent(
+                    fill = Fill(MarketWearPalette.BaselineRule),
+                    thickness = MarketWearDimens.BaselineLineThickness
+                )
+                val baselineDecoration = remember(baselineLine) {
+                    HorizontalLine(
+                        y = { 100.0 },
+                        line = baselineLine
+                    )
+                }
+                val decorations = remember(baselineDecoration) { listOf(baselineDecoration) }
+
+                CartesianChartHost(
+                    chart = rememberCartesianChart(
+                        rememberLineCartesianLayer(
+                            lineProvider = LineCartesianLayer.LineProvider.series(primaryLine, secondaryLine),
+                            rangeProvider = SharedPortfolioRangeProvider
+                        ),
+                        decorations = decorations
+                    ),
+                    modelProducer = modelProducer,
+                    scrollState = rememberVicoScrollState(scrollEnabled = false),
+                    zoomState = rememberVicoZoomState(zoomEnabled = false),
+                    animationSpec = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(chartHeight)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            MarketWearShapes.ChartContainer
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                )
+
+                Spacer(modifier = Modifier.height(MarketWearDimens.SmallSpacing))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = state.mobileModePillLabel,
-                        fontSize = MarketWearTextSizes.ModePill,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(MarketWearDimens.ItemSpacing))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column {
-                    Text(
-                        text = state.activeQuote.formattedScore,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold
+                        text = state.mobileLegendLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = MarketWearDimens.SmallSpacing)
                     )
                     Text(
-                        text = "${state.activeQuote.formattedChange} (${state.activeQuote.formattedPercent}) from 100.00",
-                        color = trendColor,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        text = "2h Throttle",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = state.mobileSecondarySummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = state.mobileRangeSummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(MarketWearDimens.ItemSpacing))
-
-            val modelProducer = remember { CartesianChartModelProducer() }
-            LaunchedEffect(state.primarySparkline, state.secondarySparkline) {
-                modelProducer.runTransaction {
-                    lineModel {
-                        series(state.primarySparkline)
-                        series(state.secondarySparkline)
-                    }
-                }
-            }
-
-            val primaryLine = LineCartesianLayer.rememberLine(
-                fill = remember(trendColor) { LineCartesianLayer.LineFill.single(Fill(trendColor)) },
-                stroke = remember {
-                    LineCartesianLayer.LineStroke.Continuous(
-                        thickness = MarketWearDimens.PrimaryLineThickness,
-                        cap = StrokeCap.Round
-                    )
-                }
-            )
-            val secondaryLine = LineCartesianLayer.rememberLine(
-                fill = remember { LineCartesianLayer.LineFill.single(Fill(MarketWearPalette.SecondaryCurve)) },
-                stroke = remember {
-                    LineCartesianLayer.LineStroke.Dashed(
-                        thickness = MarketWearDimens.SecondaryLineThickness,
-                        cap = StrokeCap.Round,
-                        dashLength = MarketWearDimens.DashedLineLength,
-                        gapLength = MarketWearDimens.DashedGapLength
-                    )
-                }
-            )
-            val baselineLine = rememberLineComponent(
-                fill = Fill(MarketWearPalette.BaselineRule),
-                thickness = MarketWearDimens.BaselineLineThickness
-            )
-            val baselineDecoration = remember(baselineLine) {
-                HorizontalLine(
-                    y = { 100.0 },
-                    line = baselineLine
-                )
-            }
-
-            CartesianChartHost(
-                chart = rememberCartesianChart(
-                    rememberLineCartesianLayer(
-                        lineProvider = LineCartesianLayer.LineProvider.series(primaryLine, secondaryLine),
-                        rangeProvider = SharedPortfolioRangeProvider
-                    ),
-                    decorations = listOf(baselineDecoration)
-                ),
-                modelProducer = modelProducer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(chartHeight)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                        MarketWearShapes.ChartContainer
-                    )
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(MarketWearDimens.SmallSpacing))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = state.mobileLegendLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "2h Throttle",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun PrimaryScoreBlock(
+    state: PortfolioCardUiState,
+    trendColor: Color,
+    singleLineDelta: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = state.activeQuote.formattedScore,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.ExtraBold
+        )
+        Text(
+            text = "${state.activeQuote.formattedChange} (${state.activeQuote.formattedPercent}) from 100.00",
+            color = trendColor,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = if (singleLineDelta) 1 else Int.MAX_VALUE,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

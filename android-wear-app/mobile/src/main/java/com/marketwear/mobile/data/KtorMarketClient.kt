@@ -15,7 +15,8 @@ class KtorMarketClient(
 
     suspend fun fetchQuote(instrument: MarketInstrument): IndexQuote = sharedClient.fetchQuote(instrument)
 
-    suspend fun fetchAllQuotes(): List<IndexQuote> = sharedClient.fetchAllQuotes()
+    suspend fun fetchAllQuotes(forceRefresh: Boolean = false): List<IndexQuote> =
+        sharedClient.fetchAllQuotes(forceRefresh)
 
     companion object {
         fun createDefaultHttpClient(): HttpClient = createPlatformHttpClient()
