@@ -9,22 +9,18 @@ import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
-import com.marketwear.shared.model.MarketInstrument
 import com.marketwear.shared.model.MarketRegistry
+import com.marketwear.shared.network.SharedMarketClient
+import com.marketwear.shared.platform.isUsMarketWindowActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Repository responsible for managing market indices data using Room as the single source of truth.
- * Supports offloading network sync to paired phone with standalone fallback.
+ * Supports offloading network sync to paired phone with concurrent standalone fallback.
  */
 class MarketRepository private constructor(private val context: Context) {
 
@@ -32,11 +28,7 @@ class MarketRepository private constructor(private val context: Context) {
     private val dao = db.indexQuoteDao()
     private val capabilityClient = Wearable.getCapabilityClient(context)
     private val messageClient = Wearable.getMessageClient(context)
-
-    init {
-        // Automatically schedule 15-minute battery-conscious background WorkManager sync
-        MarketSyncWorker.schedulePeriodicSync(context)
-    }
+    private val sharedClient by lazy { SharedMarketClient() }
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
@@ -47,6 +39,9 @@ class MarketRepository private constructor(private val context: Context) {
     }
 
     companion object {
+        private const val ACTIVE_FRESHNESS_MS = 5 * 60 * 1000L       // 5 minutes during market hours
+        private const val OFF_HOURS_FRESHNESS_MS = 6 * 60 * 60 * 1000L // 6 hours overnight/weekends
+
         @Volatile
         private var INSTANCE: MarketRepository? = null
 
@@ -65,11 +60,15 @@ class MarketRepository private constructor(private val context: Context) {
     }
 
     /**
-     * Smart refresh:
-     * If phone is available, request refresh via Wearable Data Layer.
-     * If phone is unavailable, fall back to direct watch network fetch.
+     * Battery-aware refresh:
+     * Skips network/Data Layer wakeups when `!force` and cached Room data is already fresh.
+     * Otherwise delegates to paired phone via Wearable Data Layer, or uses concurrent Ktor fallback.
      */
-    suspend fun refreshWithPhoneFallback(): Unit = withContext(Dispatchers.IO) {
+    suspend fun refreshWithPhoneFallback(force: Boolean = true): Unit = withContext(Dispatchers.IO) {
+        if (!force && isCacheFresh()) {
+            return@withContext
+        }
+
         val phoneNode = getConnectedPhoneNode()
         if (phoneNode != null) {
             try {
@@ -84,8 +83,16 @@ class MarketRepository private constructor(private val context: Context) {
             }
         }
 
-        // Fallback: direct online fetch on watch
+        // Fallback: concurrent online fetch on watch (single pooled Ktor client)
         refreshAllOnline()
+    }
+
+    private suspend fun isCacheFresh(): Boolean {
+        val cached = dao.getAllQuotes()
+        if (cached.size < MarketRegistry.ALL_INSTRUMENTS.size) return false
+        val now = System.currentTimeMillis()
+        val maxAge = if (isUsMarketWindowActive()) ACTIVE_FRESHNESS_MS else OFF_HOURS_FRESHNESS_MS
+        return cached.all { (now - it.lastUpdated) < maxAge }
     }
 
     private suspend fun getConnectedPhoneNode(): com.google.android.gms.wearable.Node? {
@@ -104,68 +111,19 @@ class MarketRepository private constructor(private val context: Context) {
             return@withContext dao.getAllQuotes().map { it.toDomainModel() }
         }
 
-        val results = mutableListOf<IndexQuoteEntity>()
-
-        for (inst in MarketRegistry.ALL_INSTRUMENTS) {
-            try {
-                val quote = fetchOnlineQuote(inst)
-                results.add(IndexQuoteEntity.fromDomainModel(quote))
-            } catch (_: Exception) {
-                // Keep existing cached data on failure
-            }
+        val fetchedQuotes = try {
+            sharedClient.fetchAllQuotes()
+        } catch (_: Exception) {
+            emptyList()
         }
 
-        if (results.isNotEmpty()) {
-            dao.insertOrUpdate(results)
+        if (fetchedQuotes.isNotEmpty()) {
+            val entities = fetchedQuotes.map { IndexQuoteEntity.fromDomainModel(it) }
+            dao.insertOrUpdate(entities)
             MarketSyncWorker.triggerComplicationUpdates(context)
         }
 
         dao.getAllQuotes().map { it.toDomainModel() }
-    }
-
-    private fun fetchOnlineQuote(instrument: MarketInstrument): IndexQuote {
-        val encodedTicker = instrument.yahooTicker.replace("^", "%5E")
-        val endpoint = "https://query1.finance.yahoo.com/v8/finance/chart/$encodedTicker?interval=1d&range=1d"
-
-        val url = URL(endpoint)
-        val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.connectTimeout = 4000
-        conn.readTimeout = 4000
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (WearOS; Pixel Watch 4)")
-        conn.setRequestProperty("Accept", "application/json")
-
-        if (conn.responseCode != 200) {
-            throw RuntimeException("HTTP error ${conn.responseCode}")
-        }
-
-        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-        val response = reader.use { it.readText() }
-        conn.disconnect()
-
-        val json = JSONObject(response)
-        val result = json.getJSONObject("chart").getJSONArray("result").getJSONObject(0)
-        val meta = result.getJSONObject("meta")
-
-        val regularMarketPrice = meta.getDouble("regularMarketPrice")
-        val previousClose = meta.optDouble("previousClose", meta.optDouble("chartPreviousClose", regularMarketPrice))
-        val dayHigh = meta.optDouble("regularMarketDayHigh", regularMarketPrice * 1.005)
-        val dayLow = meta.optDouble("regularMarketDayLow", regularMarketPrice * 0.995)
-
-        val change = regularMarketPrice - previousClose
-        val percentChange = if (previousClose > 0) (change / previousClose) * 100.0 else 0.0
-
-        return IndexQuote(
-            symbol = instrument.symbol,
-            name = instrument.name,
-            price = regularMarketPrice,
-            change = change,
-            percentChange = percentChange,
-            dayHigh = dayHigh,
-            dayLow = dayLow,
-            lastUpdated = System.currentTimeMillis(),
-            category = if (instrument.isSector) "SECTOR" else "INDEX"
-        )
     }
 
     private fun isNetworkAvailable(): Boolean {

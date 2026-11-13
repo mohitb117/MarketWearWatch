@@ -1,7 +1,7 @@
 package com.marketwear.shared.contracts
 
 /**
- * Constants governing communication across Google Play Services Wearable Data Layer.
+ * Constants governing communication across Wearable Data Layer & cross-device sync.
  */
 object WearConstants {
     // Data Layer paths

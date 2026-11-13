@@ -44,6 +44,10 @@ android {
     }
 }
 
+composeCompiler {
+    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("compose_compiler_config.conf")
+}
+
 dependencies {
     implementation(project(":shared"))
 

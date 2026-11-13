@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.widget.MarketGlanceWidget
+import com.marketwear.shared.platform.isUsMarketWindowActive
 import java.util.concurrent.TimeUnit
 
 class MobileSyncWorker(
@@ -19,24 +20,45 @@ class MobileSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastSync = prefs.getLong(KEY_LAST_BG_SYNC, 0L)
+        val now = System.currentTimeMillis()
+
+        // Skip background polling overnight and on weekends if we already have recent data (<6 hrs)
+        if (!isUsMarketWindowActive() && (now - lastSync) < OFF_HOURS_MAX_AGE_MS) {
+            return Result.success()
+        }
+
         return try {
             val repository = MobileMarketRepository.getInstance()
             val quotes = repository.fetchAllQuotes()
+
+            prefs.edit().putLong(KEY_LAST_BG_SYNC, now).apply()
+
             try {
                 MarketGlanceWidget().updateAll(applicationContext)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignore widget update errors in background
             }
+
             val syncManager = WearDataSyncManager(applicationContext)
-            val success = syncManager.syncQuotesToWatch(quotes)
-            if (success) Result.success() else Result.retry()
+            if (syncManager.isWatchConnected()) {
+                // Non-urgent background sync lets Play Services batch Bluetooth/Wi-Fi transmissions
+                syncManager.syncQuotesToWatch(quotes, urgent = false)
+            }
+
+            Result.success()
         } catch (e: Exception) {
-            Result.retry()
+            // Only retry if we haven't synced in a long time; avoid retry storms
+            if ((now - lastSync) > OFF_HOURS_MAX_AGE_MS) Result.retry() else Result.success()
         }
     }
 
     companion object {
         private const val PERIODIC_WORK_TAG = "MobileMarketSyncWorker"
+        private const val PREFS_NAME = "marketwear_mobile_sync"
+        private const val KEY_LAST_BG_SYNC = "last_bg_sync_ts"
+        private const val OFF_HOURS_MAX_AGE_MS = 6 * 60 * 60 * 1000L // 6 hours
 
         fun schedulePeriodicSync(context: Context) {
             val constraints = Constraints.Builder()
@@ -44,13 +66,16 @@ class MobileSyncWorker(
                 .setRequiresBatteryNotLow(true)
                 .build()
 
-            val syncRequest = PeriodicWorkRequestBuilder<MobileSyncWorker>(15, TimeUnit.MINUTES)
+            val syncRequest = PeriodicWorkRequestBuilder<MobileSyncWorker>(
+                30, TimeUnit.MINUTES,
+                10, TimeUnit.MINUTES
+            )
                 .setConstraints(constraints)
                 .build()
 
             WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
                 PERIODIC_WORK_TAG,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 syncRequest
             )
         }
