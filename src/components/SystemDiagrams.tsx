@@ -22,17 +22,17 @@ const DIAGRAMS: DiagramSpec[] = [
     end
 
     subgraph PhoneDevice ["Android Mobile Companion (:mobile · mobileModule)"]
-        PhoneUI["Material 3 Dashboard (koinViewModel)"]
-        SharedClient["KMP SharedMarketClient (Ktor async / awaitAll, 10s timeout)"]
+        PhoneUI["MobileDashboardScreen (Uses :shared-ui MarketDashboardBody)"]
+        SharedClient["KMP SharedMarketClient (Mutex Coalescing, Semaphore(6), 5m/6h Cache, 2h Portfolio Throttle)"]
         PhoneRepo["MobileMarketRepository (Koin Singleton)"]
         WorkMgr["MobileSyncWorker (30m + Off-Hours 6h Gate)"]
         GlanceWidget["Jetpack Glance AppWidget (KoinComponent)"]
         WearSyncMgr["WearDataSyncManager (Non-Urgent DataClient)"]
 
         WorkMgr -->|isUsMarketWindowActive?| SharedClient
-        PhoneUI -->|Manual Refresh| SharedClient
-        SharedClient -->|Concurrent Fetch| YF
-        SharedClient -->|Quotes| PhoneRepo
+        PhoneUI -->|Manual forceRefresh| SharedClient
+        SharedClient -->|Bounded Fetch| YF
+        SharedClient -->|Quotes + 100-Baseline Score| PhoneRepo
         PhoneRepo --> PhoneUI
         PhoneRepo -->|Update State| GlanceWidget
         PhoneRepo -->|Coalesced Payload| WearSyncMgr
@@ -69,50 +69,57 @@ const DIAGRAMS: DiagramSpec[] = [
   },
   {
     id: 'kmp-koin',
-    title: 'Kotlin Multiplatform (:shared) & Koin 4.0.0 DI Graph',
-    subtitle: 'Pure-Kotlin DI spanning commonMain, androidMain, iosMain (MarketWearShared.xcframework), :mobile, and :app.',
-    badge: 'KMP + Koin DI',
+    title: 'KMP (:shared + :shared-ui) Multi-Surface Sharing & Koin DI',
+    subtitle: 'Single source of truth for domain models, enums, network coalescing, design tokens, and Compose Multiplatform UI across Mobile, Desktop, iOS, Web & Wear OS.',
+    badge: 'KMP + :shared-ui',
     code: `flowchart LR
-    subgraph SharedModule [":shared KMP Module (commonMain / androidMain / iosMain)"]
-        DomainModels["IndexQuote & MarketRegistry"]
-        SharedClient["SharedMarketClient (Ktor async / awaitAll)"]
-        MarketWindow["isUsMarketWindowActive()"]
-        SyncProtocol["WearConstants"]
+    subgraph SharedCore [":shared KMP Core (commonMain / androidMain / iosMain / desktopMain / jsMain)"]
+        DomainModels["IndexQuote, MarketRegistry & PortfolioRegistry (37 Holdings)"]
+        UiShapes["PortfolioUiState, MarketUiStateBuilder & Enums"]
+        SharedClient["SharedMarketClient (Mutex Coalescing, Semaphore(6), 2h Portfolio Throttle)"]
+        SyncProtocol["WearConstants & isUsMarketWindowActive()"]
         SharedDI["sharedModule & initKoin() (Koin 4.0.0)"]
     end
 
-    subgraph MobileModule [":mobile Module (Phone & Widget)"]
+    subgraph SharedUI [":shared-ui Compose Multiplatform (Android, Desktop, iOS, Web)"]
+        Tokens["MarketWearDesignTokens (Palette, Dimens, TextSizes, Shapes, ItemKeys)"]
+        Theme["MarketWearTheme (Dark Mode Default)"]
+        Components["MarketDashboardBody, PortfolioScoreCard (Vico 3.3.1), IndexMetricCard, WatchStatusChip"]
+        Entries["MarketWearIosViewController & MarketWearWebEntry"]
+    end
+
+    subgraph MobileModule [":mobile (Android Phone & Fold)"]
         MobileDI["mobileModule (Koin)"]
-        MobileUI["MobileDashboardScreen (koinViewModel)"]
-        GlanceApp["MarketGlanceWidget (KoinComponent)"]
-        SyncWorker["MobileSyncWorker (30m + Off-Hours Guard)"]
-        DataClientPhone["WearDataSyncManager (Non-Urgent DataClient)"]
+        MobileUI["MobileDashboardScreen + Glance + AppFunctions"]
+        DataClientPhone["WearDataSyncManager (DataClient)"]
     end
 
-    subgraph AppModule [":app Module (Wear OS)"]
+    subgraph DesktopModule [":desktop (KMP JVM Desktop)"]
+        DesktopUI["DesktopDashboardScreen + Side-by-Side Watch Preview"]
+    end
+
+    subgraph AppModule [":app (Wear OS Watch)"]
         WearDI["wearModule (Koin)"]
-        WearUI["Wear Compose Screen (koinViewModel)"]
-        RoomLocal["Room Persistence (MarketDatabase)"]
-        Complications["Complications (Offline Room, 3600s Period)"]
-        WearWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
+        WearUI["MarketWearScreen + PortfolioScoreWatchCard (Vico 3.3.1)"]
+        RoomLocal["Room Persistence + Offline Complications"]
     end
 
-    subgraph IosTarget ["iOS Target (Swift / Xcode)"]
-        IosFramework["MarketWearShared.xcframework"]
-        IosCall["KoinHelperKt.initKoin() / SharedDi"]
+    subgraph IosWebTargets ["iOS (Swift) & Web (Compose JS)"]
+        IosTarget["iOS App (ComposeUIViewController + MarketWearShared)"]
+        WebTarget["Web Target (ComposeViewport)"]
     end
 
-    MobileDI --> SharedDI
+    SharedUI --> SharedCore
+    MobileModule --> SharedUI
+    MobileModule --> SharedDI
+    DesktopModule --> SharedUI
+    DesktopModule --> SharedCore
+    AppModule --> SharedCore
+    AppModule --> WearDI
     WearDI --> SharedDI
-    IosTarget --> IosFramework
-    IosFramework --> SharedDI
-    MobileUI --> DomainModels
-    SyncWorker --> SharedClient
-    SyncWorker --> MarketWindow
-    DataClientPhone --> SyncProtocol
-    WearWorker --> SharedClient
-    WearWorker --> MarketWindow
-    Complications --> RoomLocal`,
+    IosTarget --> Entries
+    WebTarget --> Entries
+    DataClientPhone --> SyncProtocol`,
   },
   {
     id: 'sync-sequence',
@@ -279,30 +286,30 @@ export const SystemDiagrams: React.FC = () => {
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Cpu className="w-4 h-4 text-purple-400" />
-            <span>KMP :shared Module</span>
+            <span>KMP :shared + :shared-ui</span>
           </div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Consolidates <code className="text-purple-300">IndexQuote</code>, <code className="text-purple-300">MarketRegistry</code>, <code className="text-purple-300">SharedMarketClient</code>, and <code className="text-purple-300">isUsMarketWindowActive()</code> in <code className="text-purple-300">commonMain</code>, targeting Android, Wear OS, and iOS (<code className="text-purple-300">MarketWearShared</code>).
+            <code className="text-purple-300">:shared</code> holds <code className="text-purple-300">PortfolioRegistry</code> (37 holdings), <code className="text-purple-300">MarketUiStateBuilder</code> + enum states, and <code className="text-purple-300">SharedMarketClient</code>; <code className="text-purple-300">:shared-ui</code> shares Compose Multiplatform cards, Vico <code className="text-purple-300">3.3.1</code> charts, and Dark Mode tokens across Mobile, Desktop, iOS &amp; Web.
           </p>
         </div>
 
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <Network className="w-4 h-4 text-sky-400" />
-            <span>Koin 4.0.0 Unified DI</span>
+            <span>Zero-Duplication Tokens &amp; DI</span>
           </div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Replaces manual singletons with <code className="text-sky-300">sharedModule</code>, <code className="text-sky-300">mobileModule</code>, and <code className="text-sky-300">wearModule</code>. Exposes <code className="text-sky-300">initKoin()</code> for Android &amp; iOS Swift, plus <code className="text-sky-300">koinViewModel()</code> and <code className="text-sky-300">KoinComponent</code>.
+            <code className="text-sky-300">MarketWearDesignTokens</code> (<code className="text-sky-300">Palette</code>, <code className="text-sky-300">Dimens</code>, <code className="text-sky-300">TextSizes</code>, <code className="text-sky-300">Shapes</code>, <code className="text-sky-300">ItemKeys</code>) and Koin <code className="text-sky-300">4.0.0</code> (<code className="text-sky-300">sharedModule</code>, <code className="text-sky-300">mobileModule</code>, <code className="text-sky-300">wearModule</code>) eliminate per-platform theme/DI drift.
           </p>
         </div>
 
         <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-5 space-y-2.5">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
             <BatteryCharging className="w-4 h-4 text-emerald-400" />
-            <span>7 Battery &amp; Radio Fixes</span>
+            <span>Network, Battery &amp; UI Performance</span>
           </div>
           <p className="text-xs text-neutral-400 leading-relaxed">
-            Off-hours 6h sync gating, Room staleness checks (<code className="text-emerald-300">45m</code> active / <code className="text-emerald-300">6h</code> closed), retry-storm suppression, non-urgent background DataClient batching, and offline complications (<code className="text-emerald-300">3600s</code>).
+            <code className="text-emerald-300">Mutex</code> request coalescing, <code className="text-emerald-300">Semaphore(6)</code> concurrency, <code className="text-emerald-300">5m/6h</code> core + <code className="text-emerald-300">2h</code> portfolio caching, plus Vico gesture/diff-animation disabling (<code className="text-emerald-300">scrollEnabled=false</code>) for jank-free Watch &amp; Mobile scrolling.
           </p>
         </div>
       </div>

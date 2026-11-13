@@ -10,7 +10,7 @@
 [![Play Services](https://img.shields.io/badge/Wearable%20Data%20Layer-18.2.0-orange.svg)](https://developers.google.com/android/reference/com/google/android/gms/wearable/package-summary)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**MarketWear** is a multi-device financial tracking ecosystem built with **Kotlin Multiplatform (KMP)**, **Koin 4.0.0 DI**, **Google Pixel Watch (Wear OS)**, and **Android Mobile (Companion & Glance Widget)**—with iOS-ready shared networking, models, and market-window logic in `:shared`. It provides real-time and cached market intelligence—featuring the **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors**—with battery-aware background synchronization, rotary crown navigation, and watch face complications.
+**MarketWear** is a multi-device financial tracking ecosystem built with **Kotlin Multiplatform (KMP)**, **Compose Multiplatform (`:shared-ui`)**, **Koin 4.0.0 DI**, **Vico 3.3.1**, **Google Pixel Watch (Wear OS)**, **Android Mobile (Companion, Glance Widget & Gemini AppFunctions)**, **KMP JVM Desktop (`:desktop`)**, plus **iOS (`ComposeUIViewController`)** and **Web (`ComposeViewport`)** targets. It delivers a 100-baseline **Daily Portfolio Score** across 37 UBS & Fidelity holdings (`100% Normalized` and `59.41% Raw`), **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors** with Dark Mode default theming, request coalescing, and battery-aware background synchronization.
 
 👉 **[Try the Interactive Web Showcase & Simulator](https://mohitb117.github.io/MarketWearWatch/)** directly in your browser.
 
@@ -18,7 +18,7 @@
 
 ## Architecture Overview
 
-MarketWear employs a clean, modular architecture across three specialized Gradle modules (`:shared`, `:mobile`, and `:app`), balancing high-efficiency local caching on Wear OS with offloaded networking on the companion phone.
+MarketWear employs a clean, 5-module KMP architecture (`:shared`, `:shared-ui`, `:mobile`, `:app`, and `:desktop`), sharing domain models, enum state machines, network coalescing/caching, Dark Mode design tokens, and Compose Multiplatform UI components across all targets.
 
 ```mermaid
 flowchart TD
@@ -27,17 +27,17 @@ flowchart TD
     end
 
     subgraph PhoneDevice ["Android Mobile Companion (:mobile · mobileModule)"]
-        PhoneUI["Material 3 Dashboard (koinViewModel)"]
-        SharedClient["KMP SharedMarketClient (Ktor async / awaitAll, 10s timeout)"]
+        PhoneUI["MobileDashboardScreen (:shared-ui MarketDashboardBody)"]
+        SharedClient["KMP SharedMarketClient (Mutex Coalescing, Semaphore(6), 5m/6h Cache, 2h Portfolio Throttle)"]
         PhoneRepo["MobileMarketRepository (Koin Singleton)"]
         WorkMgr["MobileSyncWorker (30m + Off-Hours 6h Gate)"]
         GlanceWidget["Jetpack Glance AppWidget (KoinComponent)"]
         WearSyncMgr["WearDataSyncManager (Non-Urgent DataClient)"]
 
         WorkMgr -->|isUsMarketWindowActive?| SharedClient
-        PhoneUI -->|Manual Refresh| SharedClient
-        SharedClient -->|Concurrent Fetch| YF
-        SharedClient -->|Quotes| PhoneRepo
+        PhoneUI -->|Manual forceRefresh| SharedClient
+        SharedClient -->|Bounded Fetch| YF
+        SharedClient -->|Quotes + 100-Baseline Score| PhoneRepo
         PhoneRepo --> PhoneUI
         PhoneRepo -->|Update State| GlanceWidget
         PhoneRepo -->|Coalesced Payload| WearSyncMgr
@@ -54,7 +54,7 @@ flowchart TD
         WatchRepo["MarketRepository (Koin + SharedMarketClient)"]
         WatchWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
         WatchVM["MarketViewModel (koinViewModel)"]
-        WatchUI["Wear Compose (ScalingLazyColumn + Rotary)"]
+        WatchUI["Wear Compose (ScalingLazyColumn + PortfolioScoreWatchCard Vico 3.3.1)"]
         ComplicationSvc["Complication Services (Offline Room, 3600s Period)"]
 
         WatchUI -->|Crown / Tap Refresh| WatchRepo
@@ -75,50 +75,59 @@ flowchart TD
 
 ---
 
-## Multi-Module KMP & Koin DI Architecture
+## Multi-Module KMP (`:shared` + `:shared-ui`) & Koin DI Architecture
 
 ```mermaid
 flowchart LR
-    subgraph SharedModule [":shared KMP Module (commonMain / androidMain / iosMain)"]
-        DomainModels["IndexQuote & MarketRegistry"]
-        SharedClient["SharedMarketClient (Ktor async / awaitAll)"]
-        MarketWindow["isUsMarketWindowActive()"]
-        SyncProtocol["WearConstants"]
+    subgraph SharedCore [":shared KMP Core (commonMain / androidMain / iosMain / desktopMain / jsMain)"]
+        DomainModels["IndexQuote, MarketRegistry & PortfolioRegistry (37 Holdings)"]
+        UiShapes["PortfolioUiState, MarketUiStateBuilder & Enums"]
+        SharedClient["SharedMarketClient (Mutex Coalescing, Semaphore(6), 2h Portfolio Throttle)"]
+        SyncProtocol["WearConstants & isUsMarketWindowActive()"]
         SharedDI["sharedModule & initKoin() (Koin 4.0.0)"]
     end
 
-    subgraph MobileModule [":mobile Module (Phone & Widget)"]
-        MobileDI["mobileModule (Koin)"]
-        MobileUI["MobileDashboardScreen (koinViewModel)"]
-        GlanceApp["MarketGlanceWidget (KoinComponent)"]
-        SyncWorker["MobileSyncWorker (30m + Off-Hours Guard)"]
-        DataClientPhone["WearDataSyncManager (Non-Urgent DataClient)"]
+    subgraph SharedUI [":shared-ui Compose Multiplatform (Android, Desktop, iOS, Web)"]
+        Tokens["MarketWearDesignTokens (Palette, Dimens, TextSizes, Shapes, ItemKeys)"]
+        Theme["MarketWearTheme (Dark Mode Default)"]
+        Components["MarketDashboardBody, PortfolioScoreCard (Vico 3.3.1), IndexMetricCard, WatchStatusChip"]
+        Entries["MarketWearIosViewController & MarketWearWebEntry"]
     end
 
-    subgraph AppModule [":app Module (Wear OS)"]
+    subgraph MobileModule [":mobile (Android Phone & Fold)"]
+        MobileDI["mobileModule (Koin)"]
+        MobileUI["MobileDashboardScreen + Glance + AppFunctions"]
+        DataClientPhone["WearDataSyncManager (DataClient)"]
+    end
+
+    subgraph DesktopModule [":desktop (KMP JVM Desktop)"]
+        DesktopUI["DesktopDashboardScreen + Side-by-Side Watch Preview"]
+    end
+
+    subgraph AppModule [":app (Wear OS Watch)"]
         WearDI["wearModule (Koin)"]
-        WearUI["Wear Compose Screen (koinViewModel)"]
+        WearUI["MarketWearScreen + PortfolioScoreWatchCard (Vico 3.3.1)"]
         RoomLocal["Room Persistence (MarketDatabase)"]
         Complications["Complications (Offline Room, 3600s Period)"]
         WearWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
     end
 
-    subgraph IosTarget ["iOS Target (Swift / Xcode)"]
-        IosFramework["MarketWearShared.xcframework"]
-        IosCall["KoinHelperKt.initKoin() / SharedDi"]
+    subgraph IosWebTargets ["iOS (Swift) & Web (Compose JS)"]
+        IosTarget["iOS App (ComposeUIViewController + MarketWearShared)"]
+        WebTarget["Web Target (ComposeViewport)"]
     end
 
-    MobileDI --> SharedDI
+    SharedUI --> SharedCore
+    MobileModule --> SharedUI
+    MobileModule --> SharedDI
+    DesktopModule --> SharedUI
+    DesktopModule --> SharedCore
+    AppModule --> SharedCore
+    AppModule --> WearDI
     WearDI --> SharedDI
-    IosTarget --> IosFramework
-    IosFramework --> SharedDI
-    MobileUI --> DomainModels
-    SyncWorker --> SharedClient
-    SyncWorker --> MarketWindow
+    IosTarget --> Entries
+    WebTarget --> Entries
     DataClientPhone --> SyncProtocol
-    WearWorker --> SharedClient
-    WearWorker --> MarketWindow
-    Complications --> RoomLocal
 ```
 
 ---

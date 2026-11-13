@@ -12,6 +12,8 @@ A standalone, battery-efficient Wear OS application delivering live financial in
 - **Aggressive 15-Minute Cache**: Respects Google Wear OS power recommendations. Quotas and battery remain protected; updates are batched.
 - **Ambient Always-On-Display (AOD) Compliant**: Monochromatic clean rendering on low-power display states.
 - **Standalone App (\`com.google.android.wearable.standalone = true\`)**: Installs independently directly on Pixel Watch without requiring a running phone app.
+- **KMP Multi-Surface Sharing**: Shares `:shared` (models, `PortfolioRegistry`, enum state shapes, `SharedMarketClient` with `Mutex` coalescing & `Semaphore(6)`), and powers Phone, Desktop (`./gradlew :desktop:runDesktop`), iOS, and Web via `:shared-ui` + `MarketWearDesignTokens`.
+- **Repeatable ADB Install**: Run `./scripts/discover-and-install.sh` to restart `adb`, discover phone & watch via mDNS/USB, build `:app:assembleDebug` + `:mobile:assembleDebug`, and install both APKs.
 
 ---
 
