@@ -3,11 +3,12 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.marketwear.mobile"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.marketwear.indices"
@@ -85,8 +86,17 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
+    // Android 16 AppFunctions (On-device MCP for Gemini)
+    implementation(libs.androidx.appfunctions)
+    implementation(libs.androidx.appfunctions.service)
+    ksp(libs.androidx.appfunctions.compiler)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.ktor.client.mock)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+}
+
+ksp {
+    arg("appfunctions:aggregateAppFunctions", "true")
 }

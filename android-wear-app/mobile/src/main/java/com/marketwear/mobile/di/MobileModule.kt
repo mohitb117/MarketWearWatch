@@ -1,5 +1,6 @@
 package com.marketwear.mobile.di
 
+import com.marketwear.mobile.appfunctions.MarketAppFunctions
 import com.marketwear.mobile.data.KtorMarketClient
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.sync.WearDataSyncManager
@@ -13,6 +14,7 @@ val mobileModule = module {
     single { KtorMarketClient(client = get()) }
     single { MobileMarketRepository(client = get()) }
     single { WearDataSyncManager(androidContext()) }
+    single { MarketAppFunctions(repository = get(), syncManager = get()) }
     viewModel {
         MobileViewModel(
             application = androidApplication(),
