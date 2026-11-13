@@ -40,8 +40,7 @@ class MobileViewModel(
     val uiState: StateFlow<MobileMarketUiState> = _uiState.asStateFlow()
 
     init {
-        refreshAndSync()
-        checkWatchConnection()
+        refreshAndSync(forceRefresh = false)
     }
 
     fun togglePortfolioWeightMode() {
@@ -69,11 +68,21 @@ class MobileViewModel(
         }
     }
 
-    fun refreshAndSync() {
+    fun refreshAndSync(forceRefresh: Boolean = true) {
         viewModelScope.launch {
             _uiState.update { it.copy(refreshState = RefreshState.REFRESHING, errorMessage = null) }
             try {
-                val quotes = repository.fetchAllQuotes()
+                val quotes = repository.fetchAllQuotes(forceRefresh = forceRefresh)
+                _uiState.update { current ->
+                    buildUiState(
+                        quotes = quotes,
+                        weightMode = current.portfolioState.weightMode,
+                        refreshState = RefreshState.REFRESHING,
+                        watchConnectionState = current.watchConnectionState,
+                        lastSyncedTimestamp = current.lastSyncedTimestamp,
+                        errorMessage = null
+                    )
+                }
                 try {
                     MarketGlanceWidget().updateAll(getApplication())
                 } catch (_: Exception) {
@@ -85,17 +94,17 @@ class MobileViewModel(
                 } else {
                     WatchConnectionState.DISCONNECTED
                 }
-                val current = _uiState.value
-                val newTimestamp = if (syncSuccess) System.currentTimeMillis() else current.lastSyncedTimestamp
-
-                _uiState.value = buildUiState(
-                    quotes = quotes,
-                    weightMode = current.portfolioState.weightMode,
-                    refreshState = RefreshState.IDLE,
-                    watchConnectionState = connectionState,
-                    lastSyncedTimestamp = newTimestamp,
-                    errorMessage = if (!syncSuccess) "Watch sync failed (watch may be offline)" else null
-                )
+                _uiState.update { current ->
+                    val newTimestamp = if (syncSuccess) System.currentTimeMillis() else current.lastSyncedTimestamp
+                    buildUiState(
+                        quotes = current.quotes,
+                        weightMode = current.portfolioState.weightMode,
+                        refreshState = RefreshState.IDLE,
+                        watchConnectionState = connectionState,
+                        lastSyncedTimestamp = newTimestamp,
+                        errorMessage = if (!syncSuccess) "Watch sync failed (watch may be offline)" else null
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(

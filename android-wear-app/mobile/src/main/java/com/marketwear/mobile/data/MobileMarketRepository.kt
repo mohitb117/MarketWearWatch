@@ -29,8 +29,8 @@ class MobileMarketRepository(
      * Throws on total network failure so workers and callers are aware of failures
      * and NEVER syncs dummy/fake quotes to the watch.
      */
-    suspend fun fetchAllQuotes(): List<IndexQuote> = withContext(Dispatchers.IO) {
-        val results = client.fetchAllQuotes()
+    suspend fun fetchAllQuotes(forceRefresh: Boolean = false): List<IndexQuote> = withContext(Dispatchers.IO) {
+        val results = client.fetchAllQuotes(forceRefresh)
         if (results.isEmpty()) {
             throw RuntimeException("Failed to fetch market quotes: empty result set")
         }
