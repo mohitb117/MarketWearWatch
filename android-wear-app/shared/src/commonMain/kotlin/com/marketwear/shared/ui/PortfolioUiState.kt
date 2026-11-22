@@ -2,10 +2,13 @@ package com.marketwear.shared.ui
 
 import com.marketwear.shared.model.IndexQuote
 import com.marketwear.shared.model.PortfolioRegistry
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /**
  * Extensible visualization mode for Portfolio Daily Score (100-baseline) cards and charts.
  */
+@Serializable
 enum class PortfolioWeightMode {
     /** Re-scales the 37 tracked holdings (59.41% raw weight) to 100% of the tracked equity basket. */
     NORMALIZED_100,
@@ -39,6 +42,7 @@ enum class WatchConnectionState {
 /**
  * Directional price/score movement state.
  */
+@Serializable
 enum class TrendDirection {
     POSITIVE,
     NEGATIVE;
@@ -50,10 +54,39 @@ enum class TrendDirection {
 }
 
 /**
+ * User preference for the Android 16 Progress-Centric portfolio Live Update notification.
+ */
+enum class LiveNotificationPreference {
+    ACTIVE,
+    PAUSED;
+
+    fun next(): LiveNotificationPreference = when (this) {
+        ACTIVE -> PAUSED
+        PAUSED -> ACTIVE
+    }
+
+    companion object {
+        fun fromStorageKey(key: String?): LiveNotificationPreference =
+            entries.firstOrNull { it.name == key } ?: ACTIVE
+    }
+}
+
+/**
+ * Resolved delivery & promotion readiness state for the Live Update portfolio notification.
+ */
+enum class LiveNotificationDeliveryState {
+    PROMOTED_LIVE_UPDATE,
+    STANDARD_ONGOING_NEEDS_OPT_IN,
+    PERMISSION_REQUIRED,
+    PAUSED_BY_USER
+}
+
+/**
  * Shared, platform-agnostic UI state for the Portfolio Daily Score (100-baseline) card and Vico chart.
  * Pre-computes all display strings, active/secondary quotes, and sparkline series in the ViewModel
  * / state holder layer so Composables remain pure, declarative, and zero-logic.
  */
+@Serializable
 data class PortfolioCardUiState(
     val weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
     val normalizedQuote: IndexQuote = PortfolioRegistry.createDefaultFallbackPortfolioQuote(0L),
@@ -68,7 +101,15 @@ data class PortfolioCardUiState(
     val mobileRangeSummary: String = "Range: ${activeQuote.dayLow} – ${activeQuote.dayHigh}",
     val mobileLegendLabel: String = "Solid: Normalized (100%) · Dashed: Raw (${PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT}%)",
     val primarySparkline: List<Double> = if (activeQuote.sparkline.size >= 2) activeQuote.sparkline else DEFAULT_BASELINE_POINTS,
-    val secondarySparkline: List<Double> = if (secondaryQuote.sparkline.size >= 2) secondaryQuote.sparkline else primarySparkline
+    val secondarySparkline: List<Double> = if (secondaryQuote.sparkline.size >= 2) secondaryQuote.sparkline else primarySparkline,
+    val enabledHoldingsCount: Int = PortfolioRegistry.HOLDINGS.size,
+    val totalHoldingsCount: Int = PortfolioRegistry.HOLDINGS.size,
+    val activeRawWeightPercent: Double = PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT,
+    val liveUpdateSpec: PortfolioLiveUpdateSpec = PortfolioLiveUpdateFormatter.buildSpec(
+        activeQuote = activeQuote,
+        enabledHoldingsCount = enabledHoldingsCount,
+        totalHoldingsCount = totalHoldingsCount
+    )
 ) {
     companion object {
         val DEFAULT_BASELINE_POINTS: List<Double> = listOf(100.0, 100.0)
@@ -78,6 +119,7 @@ data class PortfolioCardUiState(
 /**
  * Partitioned market quotes and pre-computed [PortfolioCardUiState] produced by UI state holders / ViewModels.
  */
+@Serializable
 data class MarketDashboardState(
     val portfolioState: PortfolioCardUiState = PortfolioCardUiState(),
     val indices: List<IndexQuote> = emptyList(),
@@ -91,16 +133,28 @@ data class MarketDashboardState(
  */
 object MarketUiStateBuilder {
 
+    private val bridgeJson = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
+    fun encodeDashboardJson(dashboard: MarketDashboardState): String =
+        bridgeJson.encodeToString(MarketDashboardState.serializer(), dashboard)
+
     fun buildPortfolioCardState(
         normalizedQuote: IndexQuote,
-        weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100
+        weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
     ): PortfolioCardUiState {
-        val unnormalizedQuote = PortfolioRegistry.toUnnormalizedQuote(normalizedQuote)
+        val totalHoldingsCount = PortfolioRegistry.HOLDINGS.size
+        val enabledHoldings = PortfolioRegistry.activeHoldings(disabledHoldingIds, customWeights)
+        val enabledHoldingsCount = enabledHoldings.size.coerceAtLeast(1)
+        val activeRawWeight = PortfolioRegistry.rawWeightPercentFor(disabledHoldingIds, customWeights)
+            .let { if (it > 0.0) it else PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT }
+        val unnormalizedQuote = PortfolioRegistry.toUnnormalizedQuote(normalizedQuote, rawWeightSum = activeRawWeight)
         val (activeQuote, secondaryQuote) = when (weightMode) {
             PortfolioWeightMode.NORMALIZED_100 -> normalizedQuote to unnormalizedQuote
             PortfolioWeightMode.RAW_PORTFOLIO -> unnormalizedQuote to normalizedQuote
         }
-        val rawPctStr = PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT.toString()
+        val rawPctStr = activeRawWeight.toString()
 
         val primarySparkline = if (activeQuote.sparkline.size >= 2) {
             activeQuote.sparkline
@@ -137,6 +191,11 @@ object MarketUiStateBuilder {
             PortfolioWeightMode.RAW_PORTFOLIO ->
                 "Solid: Raw ($rawPctStr%) · Dashed: Normalized (100%)"
         }
+        val liveUpdateSpec = PortfolioLiveUpdateFormatter.buildSpec(
+            activeQuote = activeQuote,
+            enabledHoldingsCount = enabledHoldingsCount,
+            totalHoldingsCount = totalHoldingsCount
+        )
 
         return PortfolioCardUiState(
             weightMode = weightMode,
@@ -152,14 +211,20 @@ object MarketUiStateBuilder {
             mobileRangeSummary = "Range: ${activeQuote.dayLow} – ${activeQuote.dayHigh}",
             mobileLegendLabel = mobileLegendLabel,
             primarySparkline = primarySparkline,
-            secondarySparkline = secondarySparkline
+            secondarySparkline = secondarySparkline,
+            enabledHoldingsCount = enabledHoldingsCount,
+            totalHoldingsCount = totalHoldingsCount,
+            activeRawWeightPercent = activeRawWeight,
+            liveUpdateSpec = liveUpdateSpec
         )
     }
 
     fun buildDashboardState(
         quotes: List<IndexQuote>,
         weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
-        fallbackTimestampMillis: Long = 0L
+        fallbackTimestampMillis: Long = 0L,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
     ): MarketDashboardState {
         val latestUpdated = quotes.maxOfOrNull { it.lastUpdated } ?: fallbackTimestampMillis
         val portfolioQuote = quotes.firstOrNull { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }
@@ -172,7 +237,9 @@ object MarketUiStateBuilder {
         return MarketDashboardState(
             portfolioState = buildPortfolioCardState(
                 normalizedQuote = portfolioQuote,
-                weightMode = weightMode
+                weightMode = weightMode,
+                disabledHoldingIds = disabledHoldingIds,
+                customWeights = customWeights
             ),
             indices = indices,
             sectors = sectors,

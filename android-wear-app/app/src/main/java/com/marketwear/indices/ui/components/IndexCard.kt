@@ -1,5 +1,7 @@
 package com.marketwear.indices.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,10 +34,14 @@ import com.marketwear.indices.data.IndexQuote
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.ui.TrendDirection
 
-private val IndexWatchCardShape = RoundedCornerShape(14.dp)
-private val IndexWatchCardBgColor = Color(0xFF1E1E1E)
-private val PositiveTrendWatchColor = Color(0xFF4CAF50)
-private val NegativeTrendWatchColor = Color(0xFFF44336)
+private val IndexWatchCardShape = RoundedCornerShape(16.dp)
+private val IndexWatchCardBgColor = Color(0xFF101720)
+private val IndexWatchBorderColor = Color(0xFF233040)
+private val PositiveTrendWatchColor = Color(0xFF4ADE80)
+private val NegativeTrendWatchColor = Color(0xFFF87171)
+private val PositivePillWatchBg = Color(0xFF0F2D1E)
+private val NegativePillWatchBg = Color(0xFF33151A)
+private val IndexWatchTabularStyle = TextStyle(fontFeatureSettings = "tnum")
 
 fun getInstrumentIcon(symbol: String): Int {
     return when (symbol) {
@@ -60,15 +67,16 @@ fun IndexCard(
     quote: IndexQuote,
     modifier: Modifier = Modifier
 ) {
-    val trendColor = when (TrendDirection.fromChange(quote.change)) {
-        TrendDirection.POSITIVE -> PositiveTrendWatchColor
-        TrendDirection.NEGATIVE -> NegativeTrendWatchColor
-    }
+    val isPositive = TrendDirection.fromChange(quote.change) == TrendDirection.POSITIVE
+    val trendColor = if (isPositive) PositiveTrendWatchColor else NegativeTrendWatchColor
+    val pillBgColor = if (isPositive) PositivePillWatchBg else NegativePillWatchBg
     val iconRes = remember(quote.symbol) { getInstrumentIcon(quote.symbol) }
 
     Card(
         onClick = { /* Tap */ },
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, IndexWatchBorderColor, IndexWatchCardShape),
         shape = IndexWatchCardShape,
         backgroundPainter = CardDefaults.cardBackgroundPainter(
             startBackgroundColor = IndexWatchCardBgColor,
@@ -78,7 +86,7 @@ fun IndexCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 6.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -113,8 +121,12 @@ fun IndexCard(
                 Text(
                     text = quote.formattedPercent,
                     color = trendColor,
+                    style = IndexWatchTabularStyle,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .background(pillBgColor, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
                 )
             }
 
@@ -127,6 +139,7 @@ fun IndexCard(
             ) {
                 Text(
                     text = quote.formattedCompactPoints,
+                    style = IndexWatchTabularStyle,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 16.sp,
                     color = Color.White
@@ -134,6 +147,7 @@ fun IndexCard(
                 Text(
                     text = quote.formattedCompactChange,
                     color = trendColor,
+                    style = IndexWatchTabularStyle,
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp
                 )

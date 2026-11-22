@@ -6,10 +6,13 @@ import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.WearableListenerService
 import com.marketwear.indices.data.IndexQuote
+import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
+import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.model.TickerIntradayData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -19,47 +22,101 @@ import org.koin.core.component.inject
 class MarketWearableListenerService : WearableListenerService(), KoinComponent {
 
     private val db: MarketDatabase by inject()
+    private val selectionStore: WatchPortfolioSelectionStore by inject()
+    private val json = Json { ignoreUnknownKeys = true }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         for (event in dataEvents) {
-            if (event.type == DataEvent.TYPE_CHANGED) {
-                val uri = event.dataItem.uri
-                if (uri.path == WearConstants.PATH_MARKET_QUOTES) {
-                    val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+            if (event.type != DataEvent.TYPE_CHANGED) continue
+            val uri = event.dataItem.uri
+            when (uri.path) {
+                WearConstants.PATH_MARKET_QUOTES -> handleMarketQuotes(DataMapItem.fromDataItem(event.dataItem).dataMap)
+                WearConstants.PATH_PORTFOLIO_CONFIG -> handlePortfolioConfig(DataMapItem.fromDataItem(event.dataItem).dataMap)
+            }
+        }
+    }
 
-                    // Run synchronously on background binder thread so WakeLock is held
-                    // until database insert and complication updates complete
-                    runBlocking(Dispatchers.IO) {
-                        val entities = mutableListOf<IndexQuoteEntity>()
-
-                        // 1. Try decoding full quotes list from JSON payload
-                        val payload = dataMap.getString(WearConstants.KEY_QUOTES_PAYLOAD)
-                        if (!payload.isNullOrBlank()) {
-                            try {
-                                val json = Json { ignoreUnknownKeys = true }
-                                val quotes = json.decodeFromString<List<IndexQuote>>(payload)
-                                entities.addAll(quotes.map { IndexQuoteEntity.fromDomainModel(it) })
-                            } catch (_: Exception) {
-                                // Fallback to individual fields
-                            }
-                        }
-
-                        // 2. Fallback to individual prefix extraction if JSON wasn't available
-                        if (entities.isEmpty()) {
-                            extractQuoteEntity(dataMap, WearConstants.PREFIX_SPX)?.let {
-                                entities.add(it)
-                            }
-                            extractQuoteEntity(dataMap, WearConstants.PREFIX_NDX)?.let {
-                                entities.add(it)
-                            }
-                        }
-
-                        if (entities.isNotEmpty()) {
-                            db.indexQuoteDao().insertOrUpdate(entities)
-                            MarketSyncWorker.triggerComplicationUpdates(applicationContext)
-                        }
-                    }
+    private fun handleMarketQuotes(dataMap: DataMap) {
+        // Run synchronously on background binder thread so WakeLock is held
+        // until database insert and complication updates complete
+        runBlocking(Dispatchers.IO) {
+            val intradayPayload = dataMap.getString(WearConstants.KEY_PORTFOLIO_INTRADAY_PAYLOAD)
+            if (!intradayPayload.isNullOrBlank()) {
+                try {
+                    val intradayMap = json.decodeFromString<Map<String, TickerIntradayData>>(intradayPayload)
+                    selectionStore.saveTickerIntradayData(intradayMap)
+                } catch (_: Exception) {
+                    // Ignore malformed intraday snapshot
                 }
+            }
+
+            val entities = mutableListOf<IndexQuoteEntity>()
+            val payload = dataMap.getString(WearConstants.KEY_QUOTES_PAYLOAD)
+            if (!payload.isNullOrBlank()) {
+                try {
+                    val quotes = json.decodeFromString<List<IndexQuote>>(payload)
+                    val disabledIds = selectionStore.disabledHoldingIds.value
+                    val customWeights = selectionStore.customWeights.value
+                    val cachedIntraday = selectionStore.cachedTickerIntradayData.value
+                    val adjustedQuotes = if ((disabledIds.isNotEmpty() || customWeights.isNotEmpty()) && cachedIntraday.isNotEmpty()) {
+                        val latestTs = quotes.maxOfOrNull { it.lastUpdated } ?: System.currentTimeMillis()
+                        val customPortfolio = PortfolioRegistry.computePortfolioQuote(
+                            dataByYahooTicker = cachedIntraday,
+                            timestampMillis = latestTs,
+                            disabledHoldingIds = disabledIds,
+                            customWeights = customWeights
+                        )
+                        listOf(customPortfolio) + quotes.filter { it.symbol != PortfolioRegistry.PORTFOLIO_SYMBOL }
+                    } else {
+                        quotes
+                    }
+                    entities.addAll(adjustedQuotes.map { IndexQuoteEntity.fromDomainModel(it) })
+                } catch (_: Exception) {
+                    // Fallback to individual fields
+                }
+            }
+
+            if (entities.isEmpty()) {
+                extractQuoteEntity(dataMap, WearConstants.PREFIX_SPX)?.let { entities.add(it) }
+                extractQuoteEntity(dataMap, WearConstants.PREFIX_NDX)?.let { entities.add(it) }
+            }
+
+            if (entities.isNotEmpty()) {
+                db.indexQuoteDao().insertOrUpdate(entities)
+                MarketSyncWorker.triggerComplicationUpdates(applicationContext)
+            }
+        }
+    }
+
+    private fun handlePortfolioConfig(dataMap: DataMap) {
+        val payload = dataMap.getString(WearConstants.KEY_DISABLED_HOLDING_IDS)
+        val weightsPayload = dataMap.getString(WearConstants.KEY_CUSTOM_WEIGHTS)
+        if (payload == null && weightsPayload == null) return
+        runBlocking(Dispatchers.IO) {
+            try {
+                val disabledIds = payload?.let {
+                    json.decodeFromString<List<String>>(it).toSet()
+                } ?: selectionStore.disabledHoldingIds.value
+                val customWeights = weightsPayload?.let {
+                    json.decodeFromString<Map<String, Double>>(it)
+                } ?: selectionStore.customWeights.value
+
+                selectionStore.setDisabledHoldings(disabledIds)
+                selectionStore.setCustomWeights(customWeights)
+
+                val cachedIntraday = selectionStore.cachedTickerIntradayData.value
+                if (cachedIntraday.isNotEmpty()) {
+                    val recomputed = PortfolioRegistry.computePortfolioQuote(
+                        dataByYahooTicker = cachedIntraday,
+                        timestampMillis = System.currentTimeMillis(),
+                        disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+                        customWeights = selectionStore.customWeights.value
+                    )
+                    db.indexQuoteDao().insertOrUpdate(IndexQuoteEntity.fromDomainModel(recomputed))
+                    MarketSyncWorker.triggerComplicationUpdates(applicationContext)
+                }
+            } catch (_: Exception) {
+                // Ignore malformed config payload
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.marketwear.desktop.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,8 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -21,43 +20,56 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.marketwear.desktop.ui.components.DesktopWatchPreviewCard
-import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.MarketIntent
+import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.PortfolioWeightMode
+import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.shared.ui.RefreshState
 import com.marketwear.sharedui.components.MarketDashboardBody
+import com.marketwear.sharedui.components.MarketSessionPill
+import com.marketwear.sharedui.components.PortfolioFluctuationBar
+import com.marketwear.sharedui.components.PortfolioHoldingsConfigurator
 import com.marketwear.sharedui.theme.MarketWearDimens
 import com.marketwear.sharedui.theme.MarketWearShapes
 import com.marketwear.sharedui.theme.MarketWearTextSizes
+import com.marketwear.sharedui.theme.MarketWearTextStyles
 import com.marketwear.sharedui.theme.MarketWearTheme
+import kotlinx.coroutines.Dispatchers
 
 @Composable
 fun DesktopDashboardScreen(
-    viewModel: DesktopMarketViewModel = remember { DesktopMarketViewModel() }
+    viewModel: DesktopMarketViewModel = remember {
+        DesktopMarketViewModel(mainContext = Dispatchers.Main.immediate)
+    }
 ) {
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.dispose() }
+    }
     val uiState by viewModel.uiState.collectAsState()
     DesktopDashboardContent(
         uiState = uiState,
-        onSelectScenario = viewModel::selectScenario,
-        onToggleWeightMode = viewModel::togglePortfolioWeightMode,
-        onRefreshLive = viewModel::refreshLiveNetworkQuotes
+        onIntent = viewModel::onIntent
     )
 }
 
 @Composable
 fun DesktopDashboardContent(
     uiState: DesktopMarketUiState,
-    onSelectScenario: (DesktopSimulationScenario) -> Unit,
-    onToggleWeightMode: () -> Unit,
-    onRefreshLive: () -> Unit,
+    onIntent: (DesktopMarketIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -66,8 +78,7 @@ fun DesktopDashboardContent(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Surface(
-                tonalElevation = 4.dp,
-                shadowElevation = 2.dp,
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -78,13 +89,21 @@ fun DesktopDashboardContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "MarketWear KMP Desktop Playground",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            MarketSessionPill(
+                                status = MarketSessionStatus.fromMarketWindow(isUsMarketWindowActive())
+                            )
+                        }
                         Text(
-                            text = "MarketWear KMP Desktop Playground",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "Shared :shared + :shared-ui · Vico 3.3.1 Compose Multiplatform · Updated ${uiState.formattedLastUpdated}",
+                            text = "Shared :shared + :shared-ui · Android 16 ProgressStyle Preview · Updated ${uiState.formattedLastUpdated}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -97,13 +116,15 @@ fun DesktopDashboardContent(
                         DesktopSimulationScenario.entries.forEach { scenario ->
                             FilterChip(
                                 selected = uiState.scenario == scenario,
-                                onClick = { onSelectScenario(scenario) },
+                                onClick = { onIntent(DesktopMarketIntent.SelectScenario(scenario)) },
                                 label = { Text(scenario.label, fontSize = MarketWearTextSizes.FilterChip) }
                             )
                         }
 
                         Button(
-                            onClick = onRefreshLive,
+                            onClick = {
+                                onIntent(DesktopMarketIntent.Core(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)))
+                            },
                             enabled = uiState.refreshState != RefreshState.REFRESHING,
                             shape = MarketWearShapes.PrimaryButton
                         ) {
@@ -124,16 +145,18 @@ fun DesktopDashboardContent(
                     .padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // Left Pane: Interactive Wear OS Round Simulator + 37 Holdings Breakdown
+                // Left Pane: Interactive Wear OS Round Simulator + 37 Configurable Holdings
                 Column(
                     modifier = Modifier
-                        .width(320.dp)
+                        .width(340.dp)
                         .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     DesktopWatchPreviewCard(
                         state = uiState.portfolioState,
-                        onToggleWeightMode = onToggleWeightMode
+                        indices = uiState.indices,
+                        sectors = uiState.sectors,
+                        onIntent = { onIntent(DesktopMarketIntent.Core(it)) }
                     )
 
                     Spacer(modifier = Modifier.height(MarketWearDimens.SectionSpacing))
@@ -141,57 +164,92 @@ fun DesktopDashboardContent(
                     Card(
                         modifier = Modifier.fillMaxSize(),
                         shape = MarketWearShapes.MetricCard,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                            containerColor = MaterialTheme.colorScheme.surface
                         )
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "Tracked Basket (${uiState.topHoldings.size} Holdings · ${PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT}%)",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(MarketWearDimens.SmallSpacing)
-                            ) {
-                                items(uiState.topHoldings, key = { "${it.name}_${it.weightPercent}" }) { pos ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(
-                                                MaterialTheme.colorScheme.surface,
-                                                MarketWearShapes.CompactRow
-                                            )
-                                            .padding(horizontal = 10.dp, vertical = MarketWearDimens.SmallSpacing),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = pos.displayTicker,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = MarketWearTextSizes.HoldingRow
-                                        )
-                                        Text(
-                                            text = "${pos.weightPercent}% raw",
-                                            fontSize = MarketWearTextSizes.HoldingRow,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        PortfolioHoldingsConfigurator(
+                            holdings = uiState.topHoldings,
+                            disabledHoldingIds = uiState.disabledHoldingIds,
+                            customWeights = uiState.customWeights,
+                            onIntent = { onIntent(DesktopMarketIntent.Core(it)) },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(14.dp)
+                        )
                     }
                 }
 
-                // Right Pane: Shared Compose Multiplatform MarketDashboardBody from :shared-ui
+                // Right Pane: Android 16 Progress-Centric Notification Preview + Shared MarketDashboardBody
                 MarketDashboardBody(
                     portfolioState = uiState.portfolioState,
                     indices = uiState.indices,
                     sectors = uiState.sectors,
-                    onToggleWeightMode = onToggleWeightMode,
+                    onIntent = { onIntent(DesktopMarketIntent.Core(it)) },
                     errorMessage = uiState.errorMessage,
                     chartHeight = MarketWearDimens.DesktopChartHeight,
+                    topSlot = {
+                        val spec = uiState.portfolioState.liveUpdateSpec
+                        val accentColor = Color(spec.accentArgb)
+                        Card(
+                            shape = MarketWearShapes.MetricCard,
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(end = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = "ANDROID 16 LIVE UPDATE NOTIFICATION PREVIEW",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = spec.title,
+                                            style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = spec.subtitle,
+                                            style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    Text(
+                                        text = spec.shortCriticalText,
+                                        style = MaterialTheme.typography.labelLarge.merge(MarketWearTextStyles.Tabular),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF06130D),
+                                        modifier = Modifier
+                                            .background(accentColor, MarketWearShapes.TogglePill)
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                PortfolioFluctuationBar(spec = spec)
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
@@ -214,9 +272,7 @@ fun DesktopDashboardContentPreview() {
     MarketWearTheme {
         DesktopDashboardContent(
             uiState = state,
-            onSelectScenario = {},
-            onToggleWeightMode = {},
-            onRefreshLive = {}
+            onIntent = {}
         )
     }
 }

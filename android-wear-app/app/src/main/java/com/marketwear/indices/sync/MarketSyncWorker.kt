@@ -18,6 +18,7 @@ import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.RefreshPolicy
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.util.concurrent.TimeUnit
@@ -48,7 +49,7 @@ class MarketSyncWorker(
         }
 
         return try {
-            repository.refreshWithPhoneFallback(force = true)
+            repository.refreshWithPhoneFallback(policy = RefreshPolicy.FORCE_CORE_QUOTES)
             triggerComplicationUpdates(applicationContext)
             Result.success()
         } catch (e: Exception) {

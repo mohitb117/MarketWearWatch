@@ -7,6 +7,9 @@ import com.marketwear.mobile.sync.WearDataSyncManager
 import com.marketwear.shared.model.IndexQuote
 import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.RefreshPolicy
+import com.marketwear.shared.ui.SyncUrgency
+import com.marketwear.shared.ui.WatchConnectionState
 import kotlin.math.abs
 
 /**
@@ -84,12 +87,12 @@ class MarketAppFunctions(
     private val syncManager: WearDataSyncManager
 ) {
 
-    private suspend fun getOrFetchQuotes(forceRefresh: Boolean): List<IndexQuote> {
+    private suspend fun getOrFetchQuotes(policy: RefreshPolicy): List<IndexQuote> {
         val cached = repository.quotes.value
-        return if (!forceRefresh && cached.isNotEmpty()) {
-            cached
-        } else {
-            repository.fetchAllQuotes()
+        return when (policy) {
+            RefreshPolicy.CACHE_FIRST -> if (cached.isNotEmpty()) cached else repository.fetchAllQuotes(policy)
+            RefreshPolicy.FORCE_CORE_QUOTES,
+            RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO -> repository.fetchAllQuotes(policy)
         }
     }
 
@@ -106,7 +109,8 @@ class MarketAppFunctions(
         query: String,
         forceRefresh: Boolean = false
     ): MarketQuoteResponse {
-        val quotes = getOrFetchQuotes(forceRefresh)
+        val policy = if (forceRefresh) RefreshPolicy.FORCE_CORE_QUOTES else RefreshPolicy.CACHE_FIRST
+        val quotes = getOrFetchQuotes(policy)
         return findMatchingQuote(quotes, query).toResponse()
     }
 
@@ -134,7 +138,8 @@ class MarketAppFunctions(
     suspend fun getAllMarketQuotes(
         forceRefresh: Boolean = false
     ): MarketSummaryResponse {
-        val quotes = getOrFetchQuotes(forceRefresh)
+        val policy = if (forceRefresh) RefreshPolicy.FORCE_CORE_QUOTES else RefreshPolicy.CACHE_FIRST
+        val quotes = getOrFetchQuotes(policy)
         return MarketSummaryResponse(
             isUsMarketOpenWindow = isUsMarketWindowActive(),
             totalInstruments = quotes.size,
@@ -154,7 +159,8 @@ class MarketAppFunctions(
         forceRefresh: Boolean = false
     ): List<MarketQuoteResponse> {
         val clamped = limit.coerceIn(1, 13)
-        return getOrFetchQuotes(forceRefresh)
+        val policy = if (forceRefresh) RefreshPolicy.FORCE_CORE_QUOTES else RefreshPolicy.CACHE_FIRST
+        return getOrFetchQuotes(policy)
             .sortedByDescending { abs(it.percentChange) }
             .take(clamped)
             .map { it.toResponse() }
@@ -171,7 +177,8 @@ class MarketAppFunctions(
     suspend fun getPortfolioScore(
         forceRefresh: Boolean = false
     ): PortfolioScoreResponse {
-        val quotes = getOrFetchQuotes(forceRefresh)
+        val policy = if (forceRefresh) RefreshPolicy.FORCE_CORE_QUOTES else RefreshPolicy.CACHE_FIRST
+        val quotes = getOrFetchQuotes(policy)
         val normQuote = quotes.firstOrNull { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }
             ?: PortfolioRegistry.createDefaultFallbackPortfolioQuote(System.currentTimeMillis())
         val unnormQuote = PortfolioRegistry.toUnnormalizedQuote(normQuote)
@@ -195,10 +202,15 @@ class MarketAppFunctions(
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true, isEnabled = true)
     suspend fun refreshAndSyncToWatch(): SyncWatchResponse {
-        val quotes = repository.fetchAllQuotes()
-        val connected = syncManager.isWatchConnected()
+        val quotes = repository.fetchAllQuotes(RefreshPolicy.FORCE_CORE_QUOTES)
+        val connectionState = syncManager.getWatchConnectionState()
+        val connected = connectionState == WatchConnectionState.CONNECTED
         if (connected) {
-            syncManager.syncQuotesToWatch(quotes)
+            syncManager.syncQuotesToWatch(
+                quotes = quotes,
+                urgency = SyncUrgency.IMMEDIATE,
+                intradayData = repository.getCachedPortfolioTickerData()
+            )
         }
         return SyncWatchResponse(
             syncedCount = quotes.size,
