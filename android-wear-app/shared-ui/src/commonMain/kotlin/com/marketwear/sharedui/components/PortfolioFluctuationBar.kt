@@ -1,16 +1,31 @@
 package com.marketwear.sharedui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -19,13 +34,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.ui.HoldingSelectionPreset
+import com.marketwear.shared.ui.MarketIntent
+import com.marketwear.shared.ui.NotificationExpansionMode
 import com.marketwear.shared.ui.PortfolioLiveUpdateFormatter
 import com.marketwear.shared.ui.PortfolioLiveUpdateSpec
+import com.marketwear.shared.ui.PortfolioMomentumBand
+import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.sharedui.theme.MarketWearDimens
 import com.marketwear.sharedui.theme.MarketWearPalette
+import com.marketwear.sharedui.theme.MarketWearShapes
 import com.marketwear.sharedui.theme.MarketWearTextStyles
 import com.marketwear.sharedui.theme.MarketWearTheme
 
@@ -194,6 +217,252 @@ fun PortfolioFluctuationBar(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun LiveUpdateNotificationPreviewCard(
+    spec: PortfolioLiveUpdateSpec,
+    onIntent: (MarketIntent) -> Unit = {},
+    modifier: Modifier = Modifier,
+    initialMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED,
+    selectedMode: NotificationExpansionMode? = null,
+    onSelectMode: ((NotificationExpansionMode) -> Unit)? = null
+) {
+    var localMode by remember { mutableStateOf(initialMode) }
+    val mode = selectedMode ?: localMode
+    val updateMode: (NotificationExpansionMode) -> Unit = { next ->
+        localMode = next
+        onSelectMode?.invoke(next)
+    }
+    val accentColor = Color(spec.accentArgb)
+    val arrowGlyph = when (spec.momentumBand) {
+        PortfolioMomentumBand.FLAT -> "→"
+        PortfolioMomentumBand.MILD_GAIN,
+        PortfolioMomentumBand.MODERATE_GAIN,
+        PortfolioMomentumBand.STRONG_GAIN -> "↗"
+        PortfolioMomentumBand.MILD_LOSS,
+        PortfolioMomentumBand.MODERATE_LOSS,
+        PortfolioMomentumBand.STRONG_LOSS -> "↘"
+    }
+
+    Card(
+        shape = MarketWearShapes.MetricCard,
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.38f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Top bar: Simulated Status Bar Mini Chip (9:30 [ ↗ +0.84% ]) + Collapsed/Expanded Mode Switcher
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "9:30",
+                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // Status bar directional arrow mini chip tile
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .clip(MarketWearShapes.TogglePill)
+                            .background(accentColor)
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = arrowGlyph,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF06130D)
+                        )
+                        Text(
+                            text = spec.shortCriticalText,
+                            style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF06130D)
+                        )
+                    }
+                    Text(
+                        text = "· ${spec.subText}",
+                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Collapsed / Expanded toggle pill
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    NotificationExpansionMode.entries.forEach { entry ->
+                        val isSelected = mode == entry
+                        val pillBg = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        }
+                        val pillFg = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val label = when (entry) {
+                            NotificationExpansionMode.COLLAPSED -> "Collapsed"
+                            NotificationExpansionMode.EXPANDED -> "Expanded"
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(MarketWearShapes.TogglePill)
+                                .background(pillBg)
+                                .clickable { updateMode(entry) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = pillFg
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when (mode) {
+                NotificationExpansionMode.COLLAPSED -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { updateMode(NotificationExpansionMode.EXPANDED) },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = spec.collapsedTitle,
+                                style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = spec.collapsedSubtitle,
+                                style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = "⌄",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    PortfolioFluctuationBar(
+                        spec = spec,
+                        density = FluctuationBarDensity.COMPACT
+                    )
+                }
+
+                NotificationExpansionMode.EXPANDED -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { updateMode(NotificationExpansionMode.COLLAPSED) },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = spec.expandedTitle,
+                                style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = spec.expandedSubtitle,
+                                style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Text(
+                            text = "⌃",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PortfolioFluctuationBar(
+                        spec = spec,
+                        density = FluctuationBarDensity.STANDARD
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NotificationActionPill(
+                            label = "100% / Raw",
+                            onClick = { onIntent(MarketIntent.ToggleWeightMode) }
+                        )
+                        NotificationActionPill(
+                            label = "All 37",
+                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.ALL_37)) }
+                        )
+                        NotificationActionPill(
+                            label = "Top 10",
+                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.TOP_10)) }
+                        )
+                        NotificationActionPill(
+                            label = "Sync",
+                            onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationActionPill(
+    label: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(MarketWearShapes.TogglePill)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), MarketWearShapes.TogglePill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

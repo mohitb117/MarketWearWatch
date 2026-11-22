@@ -1,8 +1,11 @@
 package com.marketwear.mobile.data
 
 import android.content.Context
+import com.marketwear.shared.model.IndexQuote
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketStateReducer
+import com.marketwear.shared.ui.NotificationExpansionMode
+import com.marketwear.shared.ui.PortfolioWeightMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +32,18 @@ class PortfolioSelectionStore(context: Context) {
     )
     val liveNotificationPreference: StateFlow<LiveNotificationPreference> =
         _liveNotificationPreference.asStateFlow()
+
+    private val _notificationExpansionMode = MutableStateFlow(
+        NotificationExpansionMode.fromStorageKey(prefs.getString(KEY_NOTIFICATION_EXPANSION_MODE, null))
+    )
+    val notificationExpansionMode: StateFlow<NotificationExpansionMode> =
+        _notificationExpansionMode.asStateFlow()
+
+    private val _weightMode = MutableStateFlow(loadWeightMode())
+    val weightMode: StateFlow<PortfolioWeightMode> = _weightMode.asStateFlow()
+
+    private val _cachedQuotes = MutableStateFlow(loadCachedQuotes())
+    val cachedQuotes: StateFlow<List<IndexQuote>> = _cachedQuotes.asStateFlow()
 
     fun toggleHolding(holdingId: String): Set<String> {
         val next = MarketStateReducer.reduceHoldingToggle(_disabledHoldingIds.value, holdingId)
@@ -67,6 +82,47 @@ class PortfolioSelectionStore(context: Context) {
         return next
     }
 
+    fun setNotificationExpansionMode(mode: NotificationExpansionMode) {
+        if (mode != _notificationExpansionMode.value) {
+            _notificationExpansionMode.value = mode
+            prefs.edit().putString(KEY_NOTIFICATION_EXPANSION_MODE, mode.name).apply()
+        }
+    }
+
+    fun toggleNotificationExpansionMode(): NotificationExpansionMode {
+        val next = _notificationExpansionMode.value.next()
+        setNotificationExpansionMode(next)
+        return next
+    }
+
+    fun setWeightMode(mode: PortfolioWeightMode) {
+        if (mode != _weightMode.value) {
+            _weightMode.value = mode
+            prefs.edit().putString(KEY_WEIGHT_MODE, mode.name).apply()
+        }
+    }
+
+    fun saveCachedQuotes(quotes: List<IndexQuote>) {
+        if (quotes.isEmpty()) return
+        _cachedQuotes.value = quotes
+        prefs.edit().putString(KEY_CACHED_QUOTES_JSON, json.encodeToString(quotes)).apply()
+    }
+
+    private fun loadWeightMode(): PortfolioWeightMode {
+        val raw = prefs.getString(KEY_WEIGHT_MODE, null)
+        return PortfolioWeightMode.entries.firstOrNull { it.name == raw }
+            ?: PortfolioWeightMode.NORMALIZED_100
+    }
+
+    private fun loadCachedQuotes(): List<IndexQuote> {
+        val raw = prefs.getString(KEY_CACHED_QUOTES_JSON, null) ?: return emptyList()
+        return try {
+            json.decodeFromString<List<IndexQuote>>(raw)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private fun loadDisabledIds(): Set<String> {
         val raw = prefs.getString(KEY_DISABLED_HOLDING_IDS, null) ?: return emptySet()
         return try {
@@ -90,5 +146,8 @@ class PortfolioSelectionStore(context: Context) {
         private const val KEY_DISABLED_HOLDING_IDS = "disabled_holding_ids"
         private const val KEY_CUSTOM_WEIGHTS = "custom_holding_weights"
         private const val KEY_LIVE_NOTIFICATION_PREF = "live_notification_preference"
+        private const val KEY_NOTIFICATION_EXPANSION_MODE = "live_notification_expansion_mode"
+        private const val KEY_WEIGHT_MODE = "portfolio_weight_mode"
+        private const val KEY_CACHED_QUOTES_JSON = "cached_quotes_json_v1"
     }
 }

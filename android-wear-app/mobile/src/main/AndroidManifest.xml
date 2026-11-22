@@ -56,5 +56,14 @@
                 android:resource="@xml/market_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".notification.PortfolioNotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.marketwear.mobile.action.TOGGLE_NOTIFICATION_EXPANSION_MODE" />
+                <action android:name="com.marketwear.mobile.action.TOGGLE_NOTIFICATION_WEIGHT_MODE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
     <application
         android:name=".MarketWearApplication"
@@ -44,6 +46,15 @@
                     android:scheme="wear" />
             </intent-filter>
         </service>
+
+        <!-- Watch Notification "Open on Phone" Action Receiver -->
+        <receiver
+            android:name=".notification.WatchOpenOnPhoneReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.marketwear.indices.action.OPEN_ON_PHONE" />
+            </intent-filter>
+        </receiver>
 
         <!-- S&P 500 Complication Provider Service -->
         <service

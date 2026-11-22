@@ -15,7 +15,9 @@ import com.marketwear.indices.NasdaqComplicationService
 import com.marketwear.indices.PortfolioScoreComplicationService
 import com.marketwear.indices.Sp500ComplicationService
 import com.marketwear.indices.data.MarketRepository
+import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.data.db.MarketDatabase
+import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.platform.isUsMarketWindowActive
 import com.marketwear.shared.ui.RefreshPolicy
@@ -30,6 +32,8 @@ class MarketSyncWorker(
 
     private val db: MarketDatabase by inject()
     private val repository: MarketRepository by inject()
+    private val selectionStore: WatchPortfolioSelectionStore by inject()
+    private val liveNotificationManager: WatchLiveNotificationManager by inject()
 
     override suspend fun doWork(): Result {
         val quotes = db.indexQuoteDao().getAllQuotes()
@@ -50,6 +54,12 @@ class MarketSyncWorker(
 
         return try {
             repository.refreshWithPhoneFallback(policy = RefreshPolicy.FORCE_CORE_QUOTES)
+            val refreshedQuotes = db.indexQuoteDao().getAllQuotes().map { it.toDomainModel() }
+            liveNotificationManager.showOrUpdateFromQuotes(
+                quotes = refreshedQuotes,
+                disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+                customWeights = selectionStore.customWeights.value
+            )
             triggerComplicationUpdates(applicationContext)
             Result.success()
         } catch (e: Exception) {

@@ -24,6 +24,25 @@ enum class PortfolioMomentumBand {
 }
 
 /**
+ * Interactive display density state for the Live Update notification (both system shade & in-app preview).
+ */
+@Serializable
+enum class NotificationExpansionMode {
+    COLLAPSED,
+    EXPANDED;
+
+    fun next(): NotificationExpansionMode = when (this) {
+        COLLAPSED -> EXPANDED
+        EXPANDED -> COLLAPSED
+    }
+
+    companion object {
+        fun fromStorageKey(key: String?): NotificationExpansionMode =
+            entries.firstOrNull { it.name == key } ?: EXPANDED
+    }
+}
+
+/**
  * Colored segment within the 0..1000 Android 16 ProgressStyle (or Compose Canvas) bipolar track,
  * where 500 (50%) marks the 100.00 morning baseline.
  */
@@ -50,6 +69,12 @@ data class PortfolioLiveUpdateSpec(
     val shortCriticalText: String,
     val title: String,
     val subtitle: String,
+    val subText: String = "100% Norm",
+    val collapsedTitle: String = title,
+    val collapsedSubtitle: String = subtitle,
+    val expandedTitle: String = title,
+    val expandedSubtitle: String = subtitle,
+    val secondarySummaryLine: String = "",
     val baselineLabel: String = "100.0"
 )
 
@@ -106,7 +131,9 @@ object PortfolioLiveUpdateFormatter {
     fun buildSpec(
         activeQuote: IndexQuote,
         enabledHoldingsCount: Int = PortfolioRegistry.HOLDINGS.size,
-        totalHoldingsCount: Int = PortfolioRegistry.HOLDINGS.size
+        totalHoldingsCount: Int = PortfolioRegistry.HOLDINGS.size,
+        modeBadgeLabel: String = "100% Norm",
+        secondarySummaryLine: String = ""
     ): PortfolioLiveUpdateSpec {
         val pct = activeQuote.percentChange
         val absPct = abs(pct)
@@ -178,9 +205,37 @@ object PortfolioLiveUpdateFormatter {
         }
 
         val shortCriticalText = formatShortCriticalPercent(pct)
+        val arrowGlyph = when (momentumBand) {
+            PortfolioMomentumBand.FLAT -> "→"
+            PortfolioMomentumBand.MILD_GAIN,
+            PortfolioMomentumBand.MODERATE_GAIN,
+            PortfolioMomentumBand.STRONG_GAIN -> "↗"
+            PortfolioMomentumBand.MILD_LOSS,
+            PortfolioMomentumBand.MODERATE_LOSS,
+            PortfolioMomentumBand.STRONG_LOSS -> "↘"
+        }
+        val rangeText = "${formatTwoDecimals(activeQuote.dayLow)}–${formatTwoDecimals(activeQuote.dayHigh)}"
         val title = "Portfolio ${activeQuote.formattedScore} (${activeQuote.formattedPercent})"
         val subtitle = "$enabledHoldingsCount/$totalHoldingsCount holdings · " +
-            "Range ${formatTwoDecimals(activeQuote.dayLow)}–${formatTwoDecimals(activeQuote.dayHigh)} · Center 100.0 · Log scale"
+            "Range $rangeText · Center 100.0 · Log scale"
+        val subText = "$modeBadgeLabel · $enabledHoldingsCount/$totalHoldingsCount"
+        val collapsedTitle = "Portfolio ${activeQuote.formattedScore} · $arrowGlyph $shortCriticalText"
+        val collapsedSubtitle = if (secondarySummaryLine.isNotBlank()) {
+            "$secondarySummaryLine · 50% = 100.0"
+        } else {
+            "$enabledHoldingsCount/$totalHoldingsCount holdings · 50% = 100.0"
+        }
+        val expandedTitle = "Portfolio Daily Score · ${activeQuote.formattedScore} (${activeQuote.formattedPercent})"
+        val expandedSubtitle = buildString {
+            if (secondarySummaryLine.isNotBlank()) {
+                append(secondarySummaryLine)
+                append(" · ")
+            }
+            append("Range ")
+            append(rangeText)
+            append(" · ")
+            append("$enabledHoldingsCount/$totalHoldingsCount active · Center 100.0 (±1% / ±5% / ±25%)")
+        }
 
         return PortfolioLiveUpdateSpec(
             progress = progress,
@@ -193,7 +248,13 @@ object PortfolioLiveUpdateFormatter {
             segments = segments,
             shortCriticalText = shortCriticalText,
             title = title,
-            subtitle = subtitle
+            subtitle = subtitle,
+            subText = subText,
+            collapsedTitle = collapsedTitle,
+            collapsedSubtitle = collapsedSubtitle,
+            expandedTitle = expandedTitle,
+            expandedSubtitle = expandedSubtitle,
+            secondarySummaryLine = secondarySummaryLine
         )
     }
 

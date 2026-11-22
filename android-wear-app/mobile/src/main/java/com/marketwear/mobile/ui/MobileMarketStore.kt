@@ -18,6 +18,7 @@ import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketIntent
 import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.MarketStateReducer
+import com.marketwear.shared.ui.NotificationExpansionMode
 import com.marketwear.shared.ui.PortfolioWeightMode
 import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.shared.ui.RefreshState
@@ -54,6 +55,10 @@ class MobileMarketStoreFactory(
             val disabledHoldingIds: Set<String>,
             val customWeights: Map<String, Double>
         ) : Action
+        data class ExternalNotificationStoreChanged(
+            val weightMode: PortfolioWeightMode,
+            val expansionMode: NotificationExpansionMode
+        ) : Action
     }
 
     private sealed interface Message {
@@ -70,7 +75,8 @@ class MobileMarketStoreFactory(
 
         data class NotificationStateUpdated(
             val preference: LiveNotificationPreference,
-            val deliveryState: LiveNotificationDeliveryState
+            val deliveryState: LiveNotificationDeliveryState,
+            val expansionMode: NotificationExpansionMode
         ) : Message
 
         data class TabSelected(val tab: MobileAppTab) : Message
@@ -82,9 +88,10 @@ class MobileMarketStoreFactory(
 
     fun create(): MobileMarketStore {
         val initialPref = selectionStore.liveNotificationPreference.value
+        val initialQuotes = repository.quotes.value.ifEmpty { selectionStore.cachedQuotes.value }
         val initialState = MobileViewModel.buildUiState(
-            quotes = repository.quotes.value,
-            weightMode = PortfolioWeightMode.NORMALIZED_100,
+            quotes = initialQuotes,
+            weightMode = selectionStore.weightMode.value,
             refreshState = RefreshState.IDLE,
             watchConnectionState = WatchConnectionState.DISCONNECTED,
             lastSyncedTimestamp = 0L,
@@ -93,6 +100,7 @@ class MobileMarketStoreFactory(
             customWeights = selectionStore.customWeights.value,
             liveNotificationPreference = initialPref,
             liveNotificationState = liveNotificationManager.resolveDeliveryState(initialPref),
+            notificationExpansionMode = selectionStore.notificationExpansionMode.value,
             activeTab = MobileAppTab.PULSE,
             sectorDisplayMode = SectorDisplayMode.HEATMAP,
             sectorSortOrder = SectorSortOrder.TOP_GAINERS
@@ -120,6 +128,16 @@ class MobileMarketStoreFactory(
                     dispatch(Action.ExternalPortfolioConfigChanged(disabledIds, weights))
                 }
             }
+            scope.launch {
+                combine(
+                    selectionStore.weightMode,
+                    selectionStore.notificationExpansionMode
+                ) { weightMode, expansionMode ->
+                    weightMode to expansionMode
+                }.drop(1).collect { (weightMode, expansionMode) ->
+                    dispatch(Action.ExternalNotificationStoreChanged(weightMode, expansionMode))
+                }
+            }
         }
     }
 
@@ -145,6 +163,25 @@ class MobileMarketStoreFactory(
                         deliveryState = deliveryState
                     )
                 }
+                is Action.ExternalNotificationStoreChanged -> {
+                    val current = state()
+                    val deliveryState = liveNotificationManager.resolveDeliveryState(current.liveNotificationPreference)
+                    dispatch(
+                        Message.NotificationStateUpdated(
+                            preference = current.liveNotificationPreference,
+                            deliveryState = deliveryState,
+                            expansionMode = action.expansionMode
+                        )
+                    )
+                    if (action.weightMode != current.portfolioState.weightMode) {
+                        dispatchUpdatedCore(
+                            weightMode = action.weightMode,
+                            deliveryState = deliveryState
+                        )
+                    } else {
+                        syncLiveNotification(state(), deliveryState)
+                    }
+                }
             }
         }
 
@@ -154,17 +191,42 @@ class MobileMarketStoreFactory(
                 is MobileMarketIntent.SetLiveNotificationPreference -> {
                     selectionStore.setLiveNotificationPreference(intent.preference)
                     val deliveryState = liveNotificationManager.resolveDeliveryState(intent.preference)
-                    dispatch(Message.NotificationStateUpdated(intent.preference, deliveryState))
+                    dispatch(
+                        Message.NotificationStateUpdated(
+                            preference = intent.preference,
+                            deliveryState = deliveryState,
+                            expansionMode = state().notificationExpansionMode
+                        )
+                    )
                     when (intent.preference) {
                         LiveNotificationPreference.ACTIVE -> syncLiveNotification(state(), deliveryState)
                         LiveNotificationPreference.PAUSED -> liveNotificationManager.dismiss()
                     }
                 }
+                is MobileMarketIntent.SetNotificationExpansionMode -> {
+                    selectionStore.setNotificationExpansionMode(intent.mode)
+                    val current = state()
+                    val deliveryState = liveNotificationManager.resolveDeliveryState(current.liveNotificationPreference)
+                    dispatch(
+                        Message.NotificationStateUpdated(
+                            preference = current.liveNotificationPreference,
+                            deliveryState = deliveryState,
+                            expansionMode = intent.mode
+                        )
+                    )
+                    syncLiveNotification(state(), deliveryState)
+                }
                 MobileMarketIntent.RefreshNotificationCapabilities -> {
                     val current = state()
                     val deliveryState = liveNotificationManager.resolveDeliveryState(current.liveNotificationPreference)
-                    dispatch(Message.NotificationStateUpdated(current.liveNotificationPreference, deliveryState))
-                    syncLiveNotification(current, deliveryState)
+                    dispatch(
+                        Message.NotificationStateUpdated(
+                            preference = current.liveNotificationPreference,
+                            deliveryState = deliveryState,
+                            expansionMode = selectionStore.notificationExpansionMode.value
+                        )
+                    )
+                    syncLiveNotification(state(), deliveryState)
                 }
                 is MobileMarketIntent.SelectTab ->
                     dispatch(Message.TabSelected(intent.tab))
@@ -245,6 +307,10 @@ class MobileMarketStoreFactory(
             deliveryState: LiveNotificationDeliveryState = state().liveNotificationState
         ) {
             val prevState = state()
+            selectionStore.setWeightMode(weightMode)
+            if (quotes.isNotEmpty()) {
+                selectionStore.saveCachedQuotes(quotes)
+            }
             dispatch(
                 Message.CoreStateUpdated(
                     quotes = quotes,
@@ -269,11 +335,19 @@ class MobileMarketStoreFactory(
                 customWeights = customWeights,
                 liveNotificationPreference = prevState.liveNotificationPreference,
                 liveNotificationState = deliveryState,
+                notificationExpansionMode = prevState.notificationExpansionMode,
                 activeTab = prevState.activeTab,
                 sectorDisplayMode = prevState.sectorDisplayMode,
                 sectorSortOrder = prevState.sectorSortOrder
             )
             syncLiveNotification(nextState, deliveryState)
+            scope.launch(Dispatchers.IO) {
+                try {
+                    MarketGlanceWidget().updateAll(application)
+                } catch (_: Exception) {
+                    // Ignore if no widgets placed
+                }
+            }
         }
 
         private fun applyPortfolioConfigAndSync(
@@ -397,7 +471,10 @@ class MobileMarketStoreFactory(
             when (deliveryState) {
                 LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE,
                 LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN ->
-                    liveNotificationManager.showOrUpdate(targetState.portfolioState.liveUpdateSpec)
+                    liveNotificationManager.showOrUpdate(
+                        spec = targetState.portfolioState.liveUpdateSpec,
+                        expansionMode = targetState.notificationExpansionMode
+                    )
                 LiveNotificationDeliveryState.PERMISSION_REQUIRED,
                 LiveNotificationDeliveryState.PAUSED_BY_USER -> Unit
             }
@@ -417,13 +494,15 @@ class MobileMarketStoreFactory(
                 customWeights = msg.customWeights,
                 liveNotificationPreference = liveNotificationPreference,
                 liveNotificationState = liveNotificationState,
+                notificationExpansionMode = notificationExpansionMode,
                 activeTab = activeTab,
                 sectorDisplayMode = sectorDisplayMode,
                 sectorSortOrder = sectorSortOrder
             )
             is Message.NotificationStateUpdated -> copy(
                 liveNotificationPreference = msg.preference,
-                liveNotificationState = msg.deliveryState
+                liveNotificationState = msg.deliveryState,
+                notificationExpansionMode = msg.expansionMode
             )
             is Message.TabSelected -> copy(activeTab = msg.tab)
             is Message.SectorPreferencesUpdated -> copy(

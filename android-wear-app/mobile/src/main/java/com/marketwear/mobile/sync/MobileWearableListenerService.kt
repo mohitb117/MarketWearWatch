@@ -1,11 +1,13 @@
 package com.marketwear.mobile.sync
 
+import android.content.Intent
 import androidx.glance.appwidget.updateAll
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMapItem
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
+import com.marketwear.mobile.MainActivity
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.data.PortfolioSelectionStore
 import com.marketwear.mobile.notification.PortfolioLiveNotificationManager
@@ -29,6 +31,21 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
+        if (messageEvent.path == WearConstants.PATH_OPEN_PHONE_APP) {
+            try {
+                val launchIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    )
+                }
+                startActivity(launchIntent)
+            } catch (_: Exception) {
+                // Ignore if activity launch is restricted
+            }
+            return
+        }
         if (messageEvent.path == WearConstants.PATH_REQUEST_REFRESH) {
             // Run synchronously on the background binder thread so Google Play Services
             // maintains its WakeLock until the fetch and data push complete.
@@ -41,6 +58,7 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
                         disabledHoldingIds = disabledIds,
                         customWeights = customWeights
                     )
+                    selectionStore.saveCachedQuotes(quotes)
                     syncManager.syncQuotesToWatch(
                         quotes = quotes,
                         urgency = SyncUrgency.IMMEDIATE,
@@ -49,9 +67,16 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
                     if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
                         liveNotificationManager.showOrUpdateFromQuotes(
                             quotes = quotes,
+                            weightMode = selectionStore.weightMode.value,
                             disabledHoldingIds = disabledIds,
-                            customWeights = customWeights
+                            customWeights = customWeights,
+                            expansionMode = selectionStore.notificationExpansionMode.value
                         )
+                    }
+                    try {
+                        MarketGlanceWidget().updateAll(applicationContext)
+                    } catch (_: Exception) {
+                        // Ignore if no widgets placed
                     }
                 } catch (_: Exception) {
                     // Ignored on message failure
@@ -86,6 +111,7 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
                             customWeights = selectionStore.customWeights.value
                         )
                         if (updatedQuotes.isNotEmpty()) {
+                            selectionStore.saveCachedQuotes(updatedQuotes)
                             syncManager.syncQuotesToWatch(
                                 quotes = updatedQuotes,
                                 urgency = SyncUrgency.COALESCED_BACKGROUND,
@@ -94,8 +120,10 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
                             if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
                                 liveNotificationManager.showOrUpdateFromQuotes(
                                     quotes = updatedQuotes,
+                                    weightMode = selectionStore.weightMode.value,
                                     disabledHoldingIds = selectionStore.disabledHoldingIds.value,
-                                    customWeights = selectionStore.customWeights.value
+                                    customWeights = selectionStore.customWeights.value,
+                                    expansionMode = selectionStore.notificationExpansionMode.value
                                 )
                             }
                             try {

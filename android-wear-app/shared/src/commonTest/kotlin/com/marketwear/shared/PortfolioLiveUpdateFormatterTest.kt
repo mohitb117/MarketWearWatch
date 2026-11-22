@@ -2,6 +2,7 @@ package com.marketwear.shared
 
 import com.marketwear.shared.model.IndexQuote
 import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.ui.NotificationExpansionMode
 import com.marketwear.shared.ui.PortfolioLiveUpdateFormatter
 import com.marketwear.shared.ui.PortfolioMomentumBand
 import com.marketwear.shared.ui.TrendDirection
@@ -131,5 +132,23 @@ class PortfolioLiveUpdateFormatterTest {
         assertEquals(loss500.accentArgb, loss500.segments[0].argbColor)
         assertEquals(500, loss500.segments[1].length)
         assertEquals(PortfolioLiveUpdateFormatter.TRACK_DARK, loss500.segments[1].argbColor)
+    }
+
+    @Test
+    fun buildSpecPopulatesCollapsedAndExpandedNotificationMetadata() {
+        val spec = PortfolioLiveUpdateFormatter.buildSpec(
+            activeQuote = portfolioQuoteWithPct(95.53, -4.47),
+            enabledHoldingsCount = 10,
+            totalHoldingsCount = 37,
+            modeBadgeLabel = "Normalized (100%)",
+            secondarySummaryLine = "Raw (39.17%): 98.25 (-1.75%)"
+        )
+        assertEquals("Normalized (100%) · 10/37", spec.subText)
+        assertTrue(spec.collapsedTitle.contains("↘ -4.47%"))
+        assertTrue(spec.collapsedSubtitle.contains("Raw (39.17%): 98.25 (-1.75%)"))
+        assertTrue(spec.expandedTitle.contains("Portfolio Daily Score"))
+        assertTrue(spec.expandedSubtitle.contains("10/37 active"))
+        assertEquals(NotificationExpansionMode.COLLAPSED, NotificationExpansionMode.EXPANDED.next())
+        assertEquals(NotificationExpansionMode.EXPANDED, NotificationExpansionMode.COLLAPSED.next())
     }
 }

@@ -3,6 +3,7 @@ package com.marketwear.indices.di
 import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.data.db.MarketDatabase
+import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.indices.ui.MarketViewModel
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -13,6 +14,7 @@ val wearModule = module {
     single { MarketDatabase.getInstance(androidContext()) }
     single { get<MarketDatabase>().indexQuoteDao() }
     single { WatchPortfolioSelectionStore(androidContext()) }
+    single { WatchLiveNotificationManager(androidContext()) }
     single {
         MarketRepository(
             context = androidContext(),
@@ -26,6 +28,7 @@ val wearModule = module {
             application = androidApplication(),
             repository = get(),
             selectionStore = get(),
+            liveNotificationManager = get(),
             storeFactory = get()
         )
     }

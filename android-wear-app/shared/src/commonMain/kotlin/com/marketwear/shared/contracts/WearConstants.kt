@@ -8,6 +8,7 @@ object WearConstants {
     const val PATH_MARKET_QUOTES = "/market/quotes"
     const val PATH_REQUEST_REFRESH = "/market/request_refresh"
     const val PATH_PORTFOLIO_CONFIG = "/market/portfolio_config"
+    const val PATH_OPEN_PHONE_APP = "/market/open_phone_app"
 
     // Capability declarations for node discovery
     const val CAPABILITY_WATCH = "marketwear_watch_app"

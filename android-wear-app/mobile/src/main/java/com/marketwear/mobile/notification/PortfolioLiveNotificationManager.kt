@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.provider.Settings
+import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.marketwear.mobile.MainActivity
@@ -21,6 +22,7 @@ import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.ui.LiveNotificationDeliveryState
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketUiStateBuilder
+import com.marketwear.shared.ui.NotificationExpansionMode
 import com.marketwear.shared.ui.PortfolioLiveUpdateFormatter
 import com.marketwear.shared.ui.PortfolioLiveUpdateSpec
 import com.marketwear.shared.ui.PortfolioMomentumBand
@@ -28,9 +30,10 @@ import com.marketwear.shared.ui.PortfolioWeightMode
 
 /**
  * Renders Android 16 (API 36+) Progress-Centric Notifications ("Live Updates") showing intraday
- * portfolio fluctuations around a 50% morning baseline (100.00): gains extend right in
- * intensity-scaled green, while declines extend left below 50% in intensity-scaled red.
- * Degrades cleanly to a standard ongoing NotificationCompat progress bar on API 26–35.
+ * portfolio fluctuations around a 50% morning baseline (100.00):
+ * - Status Bar Mini Chip: directional up/down arrow small icon (`setSmallIcon`) + `setShortCriticalText`
+ * - [NotificationExpansionMode.COLLAPSED] View: compact 1-line title + 1-line subtitle + 50%-centered `ProgressStyle` bar
+ * - [NotificationExpansionMode.EXPANDED] View: full title + detailed subtitle + 50%-centered `ProgressStyle` bar + quick actions
  */
 class PortfolioLiveNotificationManager(private val context: Context) {
 
@@ -38,11 +41,38 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         context.getSystemService(NotificationManager::class.java)
 
     companion object {
+        private const val LEGACY_CHANNEL_V2 = "marketwear_portfolio_live_v2"
+        private const val LEGACY_CHANNEL_V3 = "marketwear_portfolio_live_v3"
         const val CHANNEL_ID = "marketwear_portfolio_live"
         const val CHANNEL_NAME = "Portfolio Live Updates"
         const val NOTIFICATION_ID = 1001
+        private const val REQUEST_CODE_LAUNCH = 1001
+        private const val REQUEST_CODE_TOGGLE_EXPANSION = 1002
+        private const val REQUEST_CODE_TOGGLE_WEIGHT_MODE = 1003
         private const val ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS =
             "android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS"
+
+        @DrawableRes
+        fun statusArrowIconRes(band: PortfolioMomentumBand): Int = when (band) {
+            PortfolioMomentumBand.FLAT -> R.drawable.ic_stat_arrow_flat
+            PortfolioMomentumBand.MILD_GAIN,
+            PortfolioMomentumBand.MODERATE_GAIN,
+            PortfolioMomentumBand.STRONG_GAIN -> R.drawable.ic_stat_arrow_up
+            PortfolioMomentumBand.MILD_LOSS,
+            PortfolioMomentumBand.MODERATE_LOSS,
+            PortfolioMomentumBand.STRONG_LOSS -> R.drawable.ic_stat_arrow_down
+        }
+
+        @DrawableRes
+        fun trackerIconRes(band: PortfolioMomentumBand): Int = when (band) {
+            PortfolioMomentumBand.FLAT -> R.drawable.ic_tracker_flat
+            PortfolioMomentumBand.MILD_GAIN,
+            PortfolioMomentumBand.MODERATE_GAIN,
+            PortfolioMomentumBand.STRONG_GAIN -> R.drawable.ic_tracker_up
+            PortfolioMomentumBand.MILD_LOSS,
+            PortfolioMomentumBand.MODERATE_LOSS,
+            PortfolioMomentumBand.STRONG_LOSS -> R.drawable.ic_tracker_down
+        }
     }
 
     fun isNotificationPermissionGranted(): Boolean {
@@ -88,7 +118,8 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         quotes: List<IndexQuote>,
         weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
         disabledHoldingIds: Set<String> = emptySet(),
-        customWeights: Map<String, Double> = emptyMap()
+        customWeights: Map<String, Double> = emptyMap(),
+        expansionMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED
     ) {
         val portfolioQuote = quotes.firstOrNull { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL } ?: return
         val cardState = MarketUiStateBuilder.buildPortfolioCardState(
@@ -97,26 +128,59 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             disabledHoldingIds = disabledHoldingIds,
             customWeights = customWeights
         )
-        showOrUpdate(cardState.liveUpdateSpec)
+        showOrUpdate(cardState.liveUpdateSpec, expansionMode)
     }
 
-    fun showOrUpdate(spec: PortfolioLiveUpdateSpec) {
+    fun showOrUpdate(
+        spec: PortfolioLiveUpdateSpec,
+        expansionMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED
+    ) {
         if (!isNotificationPermissionGranted()) return
         ensureChannelCreated()
 
         val launchIntent = PendingIntent.getActivity(
             context,
-            0,
+            REQUEST_CODE_LAUNCH,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val toggleExpansionIntent = PendingIntent.getBroadcast(
+            context,
+            REQUEST_CODE_TOGGLE_EXPANSION,
+            Intent(context, PortfolioNotificationActionReceiver::class.java).apply {
+                action = PortfolioNotificationActionReceiver.ACTION_TOGGLE_EXPANSION_MODE
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val toggleWeightModeIntent = PendingIntent.getBroadcast(
+            context,
+            REQUEST_CODE_TOGGLE_WEIGHT_MODE,
+            Intent(context, PortfolioNotificationActionReceiver::class.java).apply {
+                action = PortfolioNotificationActionReceiver.ACTION_TOGGLE_WEIGHT_MODE
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = if (Build.VERSION.SDK_INT >= 36) {
-            buildAndroid16ProgressNotification(spec, launchIntent)
+            buildAndroid16ProgressNotification(
+                spec = spec,
+                expansionMode = expansionMode,
+                launchIntent = launchIntent,
+                toggleExpansionIntent = toggleExpansionIntent,
+                toggleWeightModeIntent = toggleWeightModeIntent
+            )
         } else {
-            buildLegacyProgressNotification(spec, launchIntent)
+            buildLegacyProgressNotification(
+                spec = spec,
+                expansionMode = expansionMode,
+                launchIntent = launchIntent,
+                toggleExpansionIntent = toggleExpansionIntent,
+                toggleWeightModeIntent = toggleWeightModeIntent
+            )
         }
 
         notificationManager.notify(NOTIFICATION_ID, notification)
@@ -129,17 +193,13 @@ class PortfolioLiveNotificationManager(private val context: Context) {
     @SuppressLint("NewApi")
     private fun buildAndroid16ProgressNotification(
         spec: PortfolioLiveUpdateSpec,
-        launchIntent: PendingIntent
+        expansionMode: NotificationExpansionMode,
+        launchIntent: PendingIntent,
+        toggleExpansionIntent: PendingIntent,
+        toggleWeightModeIntent: PendingIntent
     ): Notification {
-        val trackerIconRes = when (spec.momentumBand) {
-            PortfolioMomentumBand.FLAT -> R.drawable.ic_tracker_flat
-            PortfolioMomentumBand.MILD_GAIN,
-            PortfolioMomentumBand.MODERATE_GAIN,
-            PortfolioMomentumBand.STRONG_GAIN -> R.drawable.ic_tracker_up
-            PortfolioMomentumBand.MILD_LOSS,
-            PortfolioMomentumBand.MODERATE_LOSS,
-            PortfolioMomentumBand.STRONG_LOSS -> R.drawable.ic_tracker_down
-        }
+        val arrowIconRes = statusArrowIconRes(spec.momentumBand)
+        val trackerRes = trackerIconRes(spec.momentumBand)
 
         val progressStyle = Notification.ProgressStyle()
             .setStyledByProgress(false)
@@ -155,41 +215,115 @@ class PortfolioLiveNotificationManager(private val context: Context) {
                         .setColor(PortfolioLiveUpdateFormatter.BASELINE_POINT_WHITE)
                 )
             )
-            .setProgressTrackerIcon(Icon.createWithResource(context, trackerIconRes))
+            .setProgressTrackerIcon(Icon.createWithResource(context, trackerRes))
 
-        return Notification.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_portfolio)
-            .setContentTitle(spec.title)
-            .setContentText(spec.subtitle)
+        val (titleText, bodyText, toggleLabel) = when (expansionMode) {
+            NotificationExpansionMode.COLLAPSED -> Triple(
+                spec.collapsedTitle,
+                spec.collapsedSubtitle,
+                "Expanded View"
+            )
+            NotificationExpansionMode.EXPANDED -> Triple(
+                spec.expandedTitle,
+                spec.expandedSubtitle,
+                "Collapsed View"
+            )
+        }
+
+        val builder = Notification.Builder(context, CHANNEL_ID)
+            .setSmallIcon(arrowIconRes)
+            .setContentTitle(titleText)
+            .setContentText(bodyText)
+            .setSubText(spec.subText)
             .setShortCriticalText(spec.shortCriticalText)
             .setColor(spec.accentArgb)
             .setOngoing(true)
+            .setLocalOnly(true)
             .setOnlyAlertOnce(true)
             .setRequestPromotedOngoing(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
             .setStyle(progressStyle)
-            .build()
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(context, arrowIconRes),
+                    toggleLabel,
+                    toggleExpansionIntent
+                ).build()
+            )
+
+        if (expansionMode == NotificationExpansionMode.EXPANDED) {
+            builder.addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(context, arrowIconRes),
+                    "100% / Raw",
+                    toggleWeightModeIntent
+                ).build()
+            )
+        }
+
+        return builder.build()
     }
 
     private fun buildLegacyProgressNotification(
         spec: PortfolioLiveUpdateSpec,
-        launchIntent: PendingIntent
+        expansionMode: NotificationExpansionMode,
+        launchIntent: PendingIntent,
+        toggleExpansionIntent: PendingIntent,
+        toggleWeightModeIntent: PendingIntent
     ): Notification {
-        return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_portfolio)
-            .setContentTitle(spec.title)
-            .setContentText(spec.subtitle)
+        val arrowIconRes = statusArrowIconRes(spec.momentumBand)
+        val (titleText, bodyText, toggleLabel) = when (expansionMode) {
+            NotificationExpansionMode.COLLAPSED -> Triple(
+                spec.collapsedTitle,
+                spec.collapsedSubtitle,
+                "Expanded View"
+            )
+            NotificationExpansionMode.EXPANDED -> Triple(
+                spec.expandedTitle,
+                spec.expandedSubtitle,
+                "Collapsed View"
+            )
+        }
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(arrowIconRes)
+            .setContentTitle(titleText)
+            .setContentText(bodyText)
+            .setSubText(spec.subText)
             .setProgress(spec.maxProgress, spec.progress, false)
             .setColor(spec.accentArgb)
             .setOngoing(true)
+            .setLocalOnly(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
-            .build()
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    arrowIconRes,
+                    toggleLabel,
+                    toggleExpansionIntent
+                ).build()
+            )
+
+        if (expansionMode == NotificationExpansionMode.EXPANDED) {
+            builder.addAction(
+                NotificationCompat.Action.Builder(
+                    arrowIconRes,
+                    "100% / Raw",
+                    toggleWeightModeIntent
+                ).build()
+            )
+        }
+
+        return builder.build()
     }
 
     private fun ensureChannelCreated() {
+        runCatching {
+            notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V2)
+            notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V3)
+        }
         val existing = notificationManager.getNotificationChannel(CHANNEL_ID)
         if (existing != null) return
 

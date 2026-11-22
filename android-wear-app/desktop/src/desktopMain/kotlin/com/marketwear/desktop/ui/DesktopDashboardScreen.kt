@@ -39,6 +39,7 @@ import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.PortfolioWeightMode
 import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.shared.ui.RefreshState
+import com.marketwear.sharedui.components.LiveUpdateNotificationPreviewCard
 import com.marketwear.sharedui.components.MarketDashboardBody
 import com.marketwear.sharedui.components.MarketSessionPill
 import com.marketwear.sharedui.components.PortfolioFluctuationBar
@@ -190,65 +191,10 @@ fun DesktopDashboardContent(
                     errorMessage = uiState.errorMessage,
                     chartHeight = MarketWearDimens.DesktopChartHeight,
                     topSlot = {
-                        val spec = uiState.portfolioState.liveUpdateSpec
-                        val accentColor = Color(spec.accentArgb)
-                        Card(
-                            shape = MarketWearShapes.MetricCard,
-                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.35f)),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(end = 10.dp)
-                                    ) {
-                                        Text(
-                                            text = "ANDROID 16 LIVE UPDATE NOTIFICATION PREVIEW",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = spec.title,
-                                            style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = spec.subtitle,
-                                            style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Text(
-                                        text = spec.shortCriticalText,
-                                        style = MaterialTheme.typography.labelLarge.merge(MarketWearTextStyles.Tabular),
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF06130D),
-                                        modifier = Modifier
-                                            .background(accentColor, MarketWearShapes.TogglePill)
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                PortfolioFluctuationBar(spec = spec)
-                            }
-                        }
+                        LiveUpdateNotificationPreviewCard(
+                            spec = uiState.portfolioState.liveUpdateSpec,
+                            onIntent = { onIntent(DesktopMarketIntent.Core(it)) }
+                        )
                     },
                     modifier = Modifier
                         .weight(1f)

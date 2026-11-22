@@ -67,6 +67,8 @@ import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.ui.LiveNotificationDeliveryState
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketIntent
+import com.marketwear.shared.ui.PortfolioLiveUpdateSpec
+import com.marketwear.shared.ui.PortfolioMomentumBand
 import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.PortfolioWeightMode
@@ -75,6 +77,7 @@ import com.marketwear.shared.ui.RefreshState
 import com.marketwear.shared.ui.SectorDisplayMode
 import com.marketwear.shared.ui.WatchConnectionState
 import com.marketwear.sharedui.components.IndexMetricCard
+import com.marketwear.sharedui.components.LiveUpdateNotificationPreviewCard
 import com.marketwear.sharedui.components.MarketDashboardBody
 import com.marketwear.sharedui.components.MarketNavGlyph
 import com.marketwear.sharedui.components.MarketSessionPill
@@ -253,6 +256,7 @@ fun MobileDashboardContent(
                                 ) {
                                     LiveNotificationChip(
                                         state = uiState.liveNotificationState,
+                                        spec = uiState.portfolioState.liveUpdateSpec,
                                         onClick = onToggleLiveNotification
                                     )
                                     WatchStatusChip(connectionState = uiState.watchConnectionState)
@@ -398,9 +402,9 @@ fun MobileDashboardContent(
                                 onIntent(MobileMarketIntent.SelectSectorSortOrder(order))
                             },
                             errorMessage = uiState.errorMessage,
-                            topSlot = when (uiState.liveNotificationState) {
-                                LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN -> {
-                                    {
+                            topSlot = {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    if (uiState.liveNotificationState == LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN) {
                                         Surface(
                                             shape = MarketWearShapes.MetricCard,
                                             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
@@ -431,10 +435,15 @@ fun MobileDashboardContent(
                                             }
                                         }
                                     }
+                                    LiveUpdateNotificationPreviewCard(
+                                        spec = uiState.portfolioState.liveUpdateSpec,
+                                        selectedMode = uiState.notificationExpansionMode,
+                                        onSelectMode = { mode ->
+                                            onIntent(MobileMarketIntent.SetNotificationExpansionMode(mode))
+                                        },
+                                        onIntent = { coreIntent -> onIntent(MobileMarketIntent.Core(coreIntent)) }
+                                    )
                                 }
-                                LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE,
-                                LiveNotificationDeliveryState.PERMISSION_REQUIRED,
-                                LiveNotificationDeliveryState.PAUSED_BY_USER -> null
                             },
                             modifier = contentModifier
                         )
@@ -526,20 +535,41 @@ private fun MobileAppTab.toNavGlyphKind(): NavGlyphKind = when (this) {
 @Composable
 private fun LiveNotificationChip(
     state: LiveNotificationDeliveryState,
+    spec: PortfolioLiveUpdateSpec,
     onClick: () -> Unit
 ) {
+    val arrowGlyph = when (spec.momentumBand) {
+        PortfolioMomentumBand.FLAT -> "→"
+        PortfolioMomentumBand.MILD_GAIN,
+        PortfolioMomentumBand.MODERATE_GAIN,
+        PortfolioMomentumBand.STRONG_GAIN -> "↗"
+        PortfolioMomentumBand.MILD_LOSS,
+        PortfolioMomentumBand.MODERATE_LOSS,
+        PortfolioMomentumBand.STRONG_LOSS -> "↘"
+    }
+    val activeChipLabel = "$arrowGlyph ${spec.shortCriticalText}"
     val (bgColor, dotColor, textColor, label) = when (state) {
-        LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE -> QuadStyle(
-            MarketWearPalette.PositivePillBg,
-            MarketWearPalette.PositiveTrend,
-            MarketWearPalette.ConnectedText,
-            "Live Bar"
-        )
+        LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE -> when (spec.momentumBand) {
+            PortfolioMomentumBand.MILD_LOSS,
+            PortfolioMomentumBand.MODERATE_LOSS,
+            PortfolioMomentumBand.STRONG_LOSS -> QuadStyle(
+                MarketWearPalette.NegativePillBg,
+                MarketWearPalette.NegativeTrend,
+                MarketWearPalette.NegativeTrend,
+                activeChipLabel
+            )
+            else -> QuadStyle(
+                MarketWearPalette.PositivePillBg,
+                MarketWearPalette.PositiveTrend,
+                MarketWearPalette.ConnectedText,
+                activeChipLabel
+            )
+        }
         LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN -> QuadStyle(
             MarketWearPalette.DarkPrimaryContainer,
             MarketWearPalette.DarkPrimary,
             MarketWearPalette.DarkOnPrimaryContainer,
-            "Live Bar"
+            activeChipLabel
         )
         LiveNotificationDeliveryState.PERMISSION_REQUIRED -> QuadStyle(
             MarketWearPalette.NeutralPillBg,
