@@ -11,8 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import com.marketwear.shared.model.MarketRegistry
+import com.marketwear.shared.ui.CoreMarketState
+import com.marketwear.shared.ui.MarketStateReducer
 import com.marketwear.shared.ui.MarketUiStateBuilder
-import com.marketwear.shared.ui.PortfolioWeightMode
+import com.marketwear.shared.ui.ThemeAppearance
 import com.marketwear.sharedui.components.MarketDashboardBody
 import com.marketwear.sharedui.theme.MarketWearTheme
 import platform.UIKit.UIViewController
@@ -21,22 +23,24 @@ import platform.UIKit.UIViewController
  * iOS UIKit entrypoint hosting the shared Compose Multiplatform [MarketDashboardBody] in Dark Mode.
  */
 fun MarketWearIosViewController(): UIViewController = ComposeUIViewController {
-    var weightMode by remember { mutableStateOf(PortfolioWeightMode.NORMALIZED_100) }
+    var coreState by remember { mutableStateOf(CoreMarketState()) }
     val quotes = remember { MarketRegistry.getFallbackQuotes() }
-    val dashboard = remember(quotes, weightMode) {
+    val dashboard = remember(quotes, coreState) {
         MarketUiStateBuilder.buildDashboardState(
             quotes = quotes,
-            weightMode = weightMode
+            weightMode = coreState.weightMode,
+            disabledHoldingIds = coreState.disabledHoldingIds,
+            customWeights = coreState.customWeights
         )
     }
 
-    MarketWearTheme(darkTheme = true) {
+    MarketWearTheme(appearance = ThemeAppearance.DARK) {
         Surface(modifier = Modifier.fillMaxSize()) {
             MarketDashboardBody(
                 portfolioState = dashboard.portfolioState,
                 indices = dashboard.indices,
                 sectors = dashboard.sectors,
-                onToggleWeightMode = { weightMode = weightMode.next() },
+                onIntent = { intent -> coreState = MarketStateReducer.reduceCoreIntent(coreState, intent) },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)

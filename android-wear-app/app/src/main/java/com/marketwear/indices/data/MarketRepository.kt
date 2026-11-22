@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.google.android.gms.wearable.CapabilityClient
+import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.marketwear.indices.data.db.IndexQuoteDao
 import com.marketwear.indices.data.db.IndexQuoteEntity
@@ -12,24 +13,31 @@ import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.network.SharedMarketClient
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.RefreshPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Repository responsible for managing market indices data using Room as the single source of truth.
- * Supports offloading network sync to paired phone with concurrent standalone fallback.
+ * Supports offloading network sync to paired phone with concurrent standalone fallback and
+ * persisting user-configured portfolio holding selections.
  */
 class MarketRepository(
     private val context: Context,
     private val dao: IndexQuoteDao,
-    private val sharedClient: SharedMarketClient
+    private val sharedClient: SharedMarketClient,
+    private val selectionStore: WatchPortfolioSelectionStore = WatchPortfolioSelectionStore(context)
 ) {
 
     private val capabilityClient = Wearable.getCapabilityClient(context)
     private val messageClient = Wearable.getMessageClient(context)
+    private val dataClient = Wearable.getDataClient(context)
+    private val json = Json { ignoreUnknownKeys = true }
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
@@ -52,12 +60,14 @@ class MarketRepository(
     }
 
     /**
-     * Battery-aware refresh:
-     * Skips network/Data Layer wakeups when `!force` and cached Room data is already fresh.
+     * Battery-aware refresh driven by [RefreshPolicy]:
+     * Skips network/Data Layer wakeups under [RefreshPolicy.CACHE_FIRST] when cached Room data is fresh.
      * Otherwise delegates to paired phone via Wearable Data Layer, or uses concurrent Ktor fallback.
      */
-    suspend fun refreshWithPhoneFallback(force: Boolean = true): Unit = withContext(Dispatchers.IO) {
-        if (!force && isCacheFresh()) {
+    suspend fun refreshWithPhoneFallback(
+        policy: RefreshPolicy = RefreshPolicy.FORCE_CORE_QUOTES
+    ): Unit = withContext(Dispatchers.IO) {
+        if (policy == RefreshPolicy.CACHE_FIRST && isCacheFresh()) {
             return@withContext
         }
 
@@ -76,7 +86,7 @@ class MarketRepository(
         }
 
         // Fallback: concurrent online fetch on watch (single pooled Ktor client)
-        refreshAllOnline()
+        refreshAllOnline(policy = policy)
     }
 
     private suspend fun isCacheFresh(): Boolean {
@@ -98,15 +108,26 @@ class MarketRepository(
         }
     }
 
-    suspend fun refreshAllOnline(): List<IndexQuote> = withContext(Dispatchers.IO) {
+    suspend fun refreshAllOnline(
+        policy: RefreshPolicy = RefreshPolicy.CACHE_FIRST
+    ): List<IndexQuote> = withContext(Dispatchers.IO) {
         if (!isNetworkAvailable()) {
             return@withContext dao.getAllQuotes().map { it.toDomainModel() }
         }
 
         val fetchedQuotes = try {
-            sharedClient.fetchAllQuotes()
+            sharedClient.fetchAllQuotes(
+                policy = policy,
+                disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+                customWeights = selectionStore.customWeights.value
+            )
         } catch (_: Exception) {
             emptyList()
+        }
+
+        val intradayCache = sharedClient.getCachedPortfolioTickerData()
+        if (intradayCache.isNotEmpty()) {
+            selectionStore.saveTickerIntradayData(intradayCache)
         }
 
         if (fetchedQuotes.isNotEmpty()) {
@@ -116,6 +137,35 @@ class MarketRepository(
         }
 
         dao.getAllQuotes().map { it.toDomainModel() }
+    }
+
+    suspend fun persistRecomputedPortfolioQuote(quote: IndexQuote) = withContext(Dispatchers.IO) {
+        dao.insertOrUpdate(IndexQuoteEntity.fromDomainModel(quote))
+        MarketSyncWorker.triggerComplicationUpdates(context)
+    }
+
+    suspend fun syncDisabledHoldingsToPhone(
+        disabledHoldingIds: Set<String>,
+        customWeights: Map<String, Double> = emptyMap()
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val putDataMapReq = PutDataMapRequest.create(WearConstants.PATH_PORTFOLIO_CONFIG)
+            val dataMap = putDataMapReq.dataMap
+            dataMap.putString(
+                WearConstants.KEY_DISABLED_HOLDING_IDS,
+                json.encodeToString(disabledHoldingIds.toList())
+            )
+            dataMap.putString(
+                WearConstants.KEY_CUSTOM_WEIGHTS,
+                json.encodeToString(customWeights)
+            )
+            dataMap.putLong(WearConstants.KEY_CONFIG_TIMESTAMP, System.currentTimeMillis())
+
+            val putRequest = putDataMapReq.asPutDataRequest().setUrgent()
+            dataClient.putDataItem(putRequest).await()
+        } catch (_: Exception) {
+            // Local selection store remains authoritative on Watch
+        }
     }
 
     private fun isNetworkAvailable(): Boolean {

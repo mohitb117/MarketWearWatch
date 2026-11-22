@@ -26,9 +26,10 @@ kotlin {
     listOf(
         iosX64(),
         iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
+        iosSimulatorArm64(),
+        macosArm64()
+    ).forEach { appleTarget ->
+        appleTarget.binaries.framework {
             baseName = "MarketWearShared"
             isStatic = true
         }
@@ -40,6 +41,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             api(libs.ktor.client.core)
             api(libs.koin.core)
+            api(libs.mvikotlin)
+            api(libs.mvikotlin.main)
+            api(libs.mvikotlin.extensions.coroutines)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
         }
@@ -66,6 +70,13 @@ kotlin {
 
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+
+        getByName("macosArm64Main").apply {
+            kotlin.srcDir("src/iosMain/kotlin")
+            dependencies {
+                implementation(libs.ktor.client.darwin)
+            }
         }
     }
 }

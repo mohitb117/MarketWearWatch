@@ -8,10 +8,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -22,6 +25,8 @@ import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
+import androidx.wear.compose.foundation.rotary.rotaryScrollable
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.CompactChip
@@ -32,13 +37,22 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
+import androidx.wear.compose.navigation.SwipeDismissableNavHost
+import androidx.wear.compose.navigation.composable
+import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import com.marketwear.indices.ui.components.IndexCard
 import com.marketwear.indices.ui.components.PortfolioScoreWatchCard
 import com.marketwear.shared.model.MarketRegistry
+import com.marketwear.shared.model.PortfolioRegistry
+import com.marketwear.shared.ui.MarketIntent
 import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.PortfolioWeightMode
+import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.shared.ui.RefreshState
 import org.koin.androidx.compose.koinViewModel
+
+private const val ROUTE_DASHBOARD = "dashboard"
+private const val ROUTE_CONFIGURE_HOLDINGS = "configure_holdings"
 
 @Composable
 fun MarketWearApp(
@@ -46,21 +60,43 @@ fun MarketWearApp(
     viewModel: MarketViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    MarketWearContent(
-        uiState = uiState,
-        onToggleWeightMode = viewModel::togglePortfolioWeightMode,
-        onRefresh = { viewModel.refresh(force = true) }
-    )
+    val navController = rememberSwipeDismissableNavController()
+
+    SwipeDismissableNavHost(
+        navController = navController,
+        startDestination = ROUTE_DASHBOARD
+    ) {
+        composable(ROUTE_DASHBOARD) {
+            MarketWearContent(
+                uiState = uiState,
+                onIntent = viewModel::onIntent,
+                onConfigureHoldings = { navController.navigate(ROUTE_CONFIGURE_HOLDINGS) }
+            )
+        }
+        composable(ROUTE_CONFIGURE_HOLDINGS) {
+            PortfolioHoldingsConfigScreen(
+                holdings = PortfolioRegistry.HOLDINGS,
+                disabledHoldingIds = uiState.disabledHoldingIds,
+                customWeights = uiState.customWeights,
+                onIntent = viewModel::onIntent
+            )
+        }
+    }
 }
 
 @Composable
 fun MarketWearContent(
     uiState: MarketUiState,
-    onToggleWeightMode: () -> Unit,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    onIntent: (MarketIntent) -> Unit,
+    modifier: Modifier = Modifier,
+    onConfigureHoldings: () -> Unit = {}
 ) {
     val listState = rememberScalingLazyListState()
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
 
     Scaffold(
         modifier = modifier,
@@ -71,7 +107,11 @@ fun MarketWearContent(
         ScalingLazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color.Black)
+                .rotaryScrollable(
+                    behavior = RotaryScrollableDefaults.behavior(listState),
+                    focusRequester = focusRequester
+                ),
             state = listState,
             autoCentering = AutoCenteringParams(itemIndex = 0),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -89,9 +129,26 @@ fun MarketWearContent(
             item(key = "portfolio_score_card") {
                 PortfolioScoreWatchCard(
                     state = uiState.portfolioState,
-                    onToggleWeightMode = onToggleWeightMode
+                    onToggleWeightMode = { onIntent(MarketIntent.ToggleWeightMode) }
                 )
                 Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            item(key = "configure_holdings_action") {
+                CompactChip(
+                    onClick = onConfigureHoldings,
+                    colors = ChipDefaults.secondaryChipColors(
+                        backgroundColor = Color(0xFF16202C)
+                    ),
+                    label = {
+                        Text(
+                            text = "Holdings (${uiState.portfolioState.enabledHoldingsCount}/${uiState.portfolioState.totalHoldingsCount})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
             }
 
             items(
@@ -128,7 +185,7 @@ fun MarketWearContent(
                     RefreshState.ERROR -> "Retry"
                 }
                 CompactChip(
-                    onClick = onRefresh,
+                    onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)) },
                     colors = ChipDefaults.secondaryChipColors(),
                     icon = {
                         if (uiState.refreshState == RefreshState.REFRESHING) {
@@ -188,8 +245,7 @@ fun MarketWearContentPreview() {
                 lastUpdated = dashboard.latestUpdatedMillis,
                 formattedLastUpdated = "11:45 AM"
             ),
-            onToggleWeightMode = {},
-            onRefresh = {}
+            onIntent = {}
         )
     }
 }

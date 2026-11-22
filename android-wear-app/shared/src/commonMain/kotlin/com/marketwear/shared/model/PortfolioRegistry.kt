@@ -8,9 +8,11 @@ data class PortfolioHolding(
     val name: String,
     val displayTicker: String,
     val yahooTicker: String,
-    val weightPercent: Double
+    val weightPercent: Double,
+    val id: String = yahooTicker
 )
 
+@Serializable
 data class TickerIntradayData(
     val yahooTicker: String,
     val previousClose: Double,
@@ -20,55 +22,95 @@ data class TickerIntradayData(
 
 /**
  * Hardcoded 37 combined UBS & Fidelity portfolio positions with percentage weights and proxies,
- * plus 100-baseline score calculation (both Normalized 100% and Unnormalized 55.41% modes).
+ * plus 100-baseline score calculation (both Normalized 100% and Unnormalized 59.41% modes).
  */
 object PortfolioRegistry {
     const val PORTFOLIO_SYMBOL = "PORTFOLIO"
     const val BASELINE_SCORE = 100.0
+    const val MIN_HOLDING_WEIGHT_PERCENT = 0.05
+    const val MAX_HOLDING_WEIGHT_PERCENT = 100.0
     private const val MAX_SPARKLINE_POINTS = 28
 
     val HOLDINGS: List<PortfolioHolding> = listOf(
-        PortfolioHolding("Apple Inc.", "AAPL", "AAPL", 5.93),
-        PortfolioHolding("General Atlantic Global Growth", "Proxy: QQQ", "QQQ", 5.46),
-        PortfolioHolding("Silver Point Capital Fund", "Proxy: BKLN", "BKLN", 5.41),
-        PortfolioHolding("NVIDIA Corp.", "NVDA", "NVDA", 5.02),
-        PortfolioHolding("Coatue Innovative Strategies", "Proxy: ARKK", "ARKK", 4.06),
-        PortfolioHolding("Amazon.com Inc.", "AMZN", "AMZN", 3.43),
-        PortfolioHolding("Microsoft Corp.", "MSFT", "MSFT", 3.42),
-        PortfolioHolding("Alphabet Inc. (Class A & C)", "GOOGL / GOOG", "GOOGL", 3.28),
-        PortfolioHolding("Netflix Inc.", "NFLX", "NFLX", 1.60),
-        PortfolioHolding("Broadcom Inc.", "AVGO", "AVGO", 1.56),
-        PortfolioHolding("Berkshire Hathaway (Class B)", "BRK.B", "BRK-B", 1.33),
-        PortfolioHolding("Eli Lilly & Co.", "LLY", "LLY", 1.26),
-        PortfolioHolding("Tesla Inc.", "TSLA", "TSLA", 1.23),
-        PortfolioHolding("Meta Platforms Inc.", "META", "META", 1.13),
-        PortfolioHolding("JPMorgan Chase & Co.", "JPM", "JPM", 1.13),
-        PortfolioHolding("Fidelity 500 Index Fund", "FXAIX (IVV)", "IVV", 1.06),
-        PortfolioHolding("Vanguard S&P 500 Value ETF", "VOOV", "VOOV", 1.02),
-        PortfolioHolding("Visa Inc.", "V", "V", 0.90),
-        PortfolioHolding("Micron Technology Inc.", "MU", "MU", 0.79),
-        PortfolioHolding("Johnson & Johnson", "JNJ", "JNJ", 0.77),
-        PortfolioHolding("Mastercard Inc.", "MA", "MA", 0.71),
-        PortfolioHolding("Advanced Micro Devices Inc.", "AMD", "AMD", 0.71),
-        PortfolioHolding("iShares Core S&P 500 ETF", "IVV", "IVV", 0.69),
-        PortfolioHolding("Walmart Inc.", "WMT", "WMT", 0.68),
-        PortfolioHolding("AbbVie Inc.", "ABBV", "ABBV", 0.64),
-        PortfolioHolding("BNS TA-GEARS TPX Note", "Proxy: EWJ", "EWJ", 0.61),
-        PortfolioHolding("Cisco Systems Inc.", "CSCO", "CSCO", 0.59),
-        PortfolioHolding("Amphenol Corp.", "APH", "APH", 0.58),
-        PortfolioHolding("BofA TA-GEARS EWZ Note", "Proxy: EWZ", "EWZ", 0.56),
-        PortfolioHolding("MS TAR-SS Intl Basket Note", "Proxy: VXUS", "VXUS", 0.55),
-        PortfolioHolding("Intel Corp.", "INTC", "INTC", 0.54),
-        PortfolioHolding("Costco Wholesale Corp.", "COST", "COST", 0.52),
-        PortfolioHolding("Palantir Technologies Inc.", "PLTR", "PLTR", 0.51),
-        PortfolioHolding("ExxonMobil Corp.", "XOM", "XOM", 0.49),
-        PortfolioHolding("Merck & Co. Inc.", "MRK", "MRK", 0.47),
-        PortfolioHolding("Fidelity Overseas Fund", "FOSFX (VXUS)", "VXUS", 0.45),
-        PortfolioHolding("JPM TA-GEARS KWEB Note", "Proxy: KWEB", "KWEB", 0.32)
+        PortfolioHolding("Apple Inc.", "AAPL", "AAPL", 5.93, "aapl"),
+        PortfolioHolding("General Atlantic Global Growth", "Proxy: QQQ", "QQQ", 5.46, "ga_qqq"),
+        PortfolioHolding("Silver Point Capital Fund", "Proxy: BKLN", "BKLN", 5.41, "silver_point_bkln"),
+        PortfolioHolding("NVIDIA Corp.", "NVDA", "NVDA", 5.02, "nvda"),
+        PortfolioHolding("Coatue Innovative Strategies", "Proxy: ARKK", "ARKK", 4.06, "coatue_arkk"),
+        PortfolioHolding("Amazon.com Inc.", "AMZN", "AMZN", 3.43, "amzn"),
+        PortfolioHolding("Microsoft Corp.", "MSFT", "MSFT", 3.42, "msft"),
+        PortfolioHolding("Alphabet Inc. (Class A & C)", "GOOGL / GOOG", "GOOGL", 3.28, "googl"),
+        PortfolioHolding("Netflix Inc.", "NFLX", "NFLX", 1.60, "nflx"),
+        PortfolioHolding("Broadcom Inc.", "AVGO", "AVGO", 1.56, "avgo"),
+        PortfolioHolding("Berkshire Hathaway (Class B)", "BRK.B", "BRK-B", 1.33, "brk_b"),
+        PortfolioHolding("Eli Lilly & Co.", "LLY", "LLY", 1.26, "lly"),
+        PortfolioHolding("Tesla Inc.", "TSLA", "TSLA", 1.23, "tsla"),
+        PortfolioHolding("Meta Platforms Inc.", "META", "META", 1.13, "meta"),
+        PortfolioHolding("JPMorgan Chase & Co.", "JPM", "JPM", 1.13, "jpm"),
+        PortfolioHolding("Fidelity 500 Index Fund", "FXAIX (IVV)", "IVV", 1.06, "fxaix_ivv"),
+        PortfolioHolding("Vanguard S&P 500 Value ETF", "VOOV", "VOOV", 1.02, "voov"),
+        PortfolioHolding("Visa Inc.", "V", "V", 0.90, "v"),
+        PortfolioHolding("Micron Technology Inc.", "MU", "MU", 0.79, "mu"),
+        PortfolioHolding("Johnson & Johnson", "JNJ", "JNJ", 0.77, "jnj"),
+        PortfolioHolding("Mastercard Inc.", "MA", "MA", 0.71, "ma"),
+        PortfolioHolding("Advanced Micro Devices Inc.", "AMD", "AMD", 0.71, "amd"),
+        PortfolioHolding("iShares Core S&P 500 ETF", "IVV", "IVV", 0.69, "ishares_ivv"),
+        PortfolioHolding("Walmart Inc.", "WMT", "WMT", 0.68, "wmt"),
+        PortfolioHolding("AbbVie Inc.", "ABBV", "ABBV", 0.64, "abbv"),
+        PortfolioHolding("BNS TA-GEARS TPX Note", "Proxy: EWJ", "EWJ", 0.61, "bns_ewj"),
+        PortfolioHolding("Cisco Systems Inc.", "CSCO", "CSCO", 0.59, "csco"),
+        PortfolioHolding("Amphenol Corp.", "APH", "APH", 0.58, "aph"),
+        PortfolioHolding("BofA TA-GEARS EWZ Note", "Proxy: EWZ", "EWZ", 0.56, "bofa_ewz"),
+        PortfolioHolding("MS TAR-SS Intl Basket Note", "Proxy: VXUS", "VXUS", 0.55, "ms_vxus"),
+        PortfolioHolding("Intel Corp.", "INTC", "INTC", 0.54, "intc"),
+        PortfolioHolding("Costco Wholesale Corp.", "COST", "COST", 0.52, "cost"),
+        PortfolioHolding("Palantir Technologies Inc.", "PLTR", "PLTR", 0.51, "pltr"),
+        PortfolioHolding("ExxonMobil Corp.", "XOM", "XOM", 0.49, "xom"),
+        PortfolioHolding("Merck & Co. Inc.", "MRK", "MRK", 0.47, "mrk"),
+        PortfolioHolding("Fidelity Overseas Fund", "FOSFX (VXUS)", "VXUS", 0.45, "fosfx_vxus"),
+        PortfolioHolding("JPM TA-GEARS KWEB Note", "Proxy: KWEB", "KWEB", 0.32, "jpm_kweb")
     )
 
+    val ALL_HOLDING_IDS: Set<String> = HOLDINGS.map { it.id }.toSet()
+    val TOP_10_HOLDING_IDS: Set<String> = HOLDINGS.take(10).map { it.id }.toSet()
+    val DEFAULT_WEIGHTS_BY_ID: Map<String, Double> = HOLDINGS.associate { it.id to it.weightPercent }
+
+    fun disabledIdsForTop10(): Set<String> = HOLDINGS.drop(10).map { it.id }.toSet()
+
+    fun effectiveWeightPercent(
+        holding: PortfolioHolding,
+        customWeights: Map<String, Double> = emptyMap()
+    ): Double = customWeights[holding.id] ?: holding.weightPercent
+
+    fun resolvedHoldings(
+        customWeights: Map<String, Double> = emptyMap()
+    ): List<PortfolioHolding> {
+        if (customWeights.isEmpty()) return HOLDINGS
+        return HOLDINGS.map { holding ->
+            val overrideWeight = customWeights[holding.id]
+            if (overrideWeight != null) holding.copy(weightPercent = overrideWeight) else holding
+        }
+    }
+
+    fun activeHoldings(
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ): List<PortfolioHolding> {
+        val resolved = resolvedHoldings(customWeights)
+        if (disabledHoldingIds.isEmpty()) return resolved
+        return resolved.filter { it.id !in disabledHoldingIds }
+    }
+
+    fun rawWeightPercentFor(
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ): Double = round2(activeHoldings(disabledHoldingIds, customWeights).sumOf { it.weightPercent })
+
+    fun uniqueTickersFor(disabledHoldingIds: Set<String> = emptySet()): List<String> =
+        activeHoldings(disabledHoldingIds).map { it.yahooTicker }.distinct()
+
     /**
-     * Exact sum of the 37 position weights (55.41%).
+     * Exact sum of the 37 position weights (59.41%).
      */
     val TOTAL_RAW_WEIGHT_PERCENT: Double =
         round(HOLDINGS.sumOf { it.weightPercent } * 100.0) / 100.0
@@ -119,9 +161,13 @@ object PortfolioRegistry {
      */
     fun computePortfolioQuote(
         dataByYahooTicker: Map<String, TickerIntradayData>,
-        timestampMillis: Long
+        timestampMillis: Long,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
     ): IndexQuote {
-        val availableHoldings = HOLDINGS.filter { holding ->
+        val selectedHoldings = activeHoldings(disabledHoldingIds, customWeights)
+            .ifEmpty { resolvedHoldings(customWeights) }
+        val availableHoldings = selectedHoldings.filter { holding ->
             val data = dataByYahooTicker[holding.yahooTicker]
             data != null && data.previousClose > 0.0
         }
@@ -131,6 +177,9 @@ object PortfolioRegistry {
         }
 
         val weightSum = availableHoldings.sumOf { it.weightPercent }
+        if (weightSum <= 0.0) {
+            return createDefaultFallbackPortfolioQuote(timestampMillis)
+        }
         val weightedReturnPct = availableHoldings.sumOf { holding ->
             val data = dataByYahooTicker.getValue(holding.yahooTicker)
             val pctReturn = ((data.currentPrice - data.previousClose) / data.previousClose) * 100.0

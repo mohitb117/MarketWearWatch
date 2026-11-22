@@ -10,8 +10,14 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.marketwear.mobile.data.MobileMarketRepository
+import com.marketwear.mobile.data.PortfolioSelectionStore
+import com.marketwear.mobile.notification.PortfolioLiveNotificationManager
 import com.marketwear.mobile.widget.MarketGlanceWidget
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.LiveNotificationPreference
+import com.marketwear.shared.ui.RefreshPolicy
+import com.marketwear.shared.ui.SyncUrgency
+import com.marketwear.shared.ui.WatchConnectionState
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.util.concurrent.TimeUnit
@@ -23,6 +29,8 @@ class MobileSyncWorker(
 
     private val repository: MobileMarketRepository by inject()
     private val syncManager: WearDataSyncManager by inject()
+    private val selectionStore: PortfolioSelectionStore by inject()
+    private val liveNotificationManager: PortfolioLiveNotificationManager by inject()
 
     override suspend fun doWork(): Result {
         val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -35,9 +43,23 @@ class MobileSyncWorker(
         }
 
         return try {
-            val quotes = repository.fetchAllQuotes()
+            val disabledIds = selectionStore.disabledHoldingIds.value
+            val customWeights = selectionStore.customWeights.value
+            val quotes = repository.fetchAllQuotes(
+                policy = RefreshPolicy.CACHE_FIRST,
+                disabledHoldingIds = disabledIds,
+                customWeights = customWeights
+            )
 
             prefs.edit().putLong(KEY_LAST_BG_SYNC, now).apply()
+
+            if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
+                liveNotificationManager.showOrUpdateFromQuotes(
+                    quotes = quotes,
+                    disabledHoldingIds = disabledIds,
+                    customWeights = customWeights
+                )
+            }
 
             try {
                 MarketGlanceWidget().updateAll(applicationContext)
@@ -45,9 +67,13 @@ class MobileSyncWorker(
                 // Ignore widget update errors in background
             }
 
-            if (syncManager.isWatchConnected()) {
+            if (syncManager.getWatchConnectionState() == WatchConnectionState.CONNECTED) {
                 // Non-urgent background sync lets Play Services batch Bluetooth/Wi-Fi transmissions
-                syncManager.syncQuotesToWatch(quotes, urgent = false)
+                syncManager.syncQuotesToWatch(
+                    quotes = quotes,
+                    urgency = SyncUrgency.COALESCED_BACKGROUND,
+                    intradayData = repository.getCachedPortfolioTickerData()
+                )
             }
 
             Result.success()

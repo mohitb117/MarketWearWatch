@@ -136,4 +136,77 @@ class PortfolioScoreCalculatorTest {
         )
         assertEquals(PortfolioCardUiState.DEFAULT_BASELINE_POINTS, fallbackSparkState.primarySparkline)
     }
+
+    @Test
+    fun holdingSelectionHasUniqueIdsAndDynamicPortfolioRecalculation() {
+        assertEquals(37, PortfolioRegistry.ALL_HOLDING_IDS.size)
+
+        val aaplTicker = PortfolioRegistry.HOLDINGS.first { it.id == "aapl" }
+        val nonAaplData = PortfolioRegistry.UNIQUE_YAHOO_TICKERS.associateWith { ticker ->
+            val price = if (ticker == aaplTicker.yahooTicker) 110.0 else 100.0
+            TickerIntradayData(
+                yahooTicker = ticker,
+                previousClose = 100.0,
+                currentPrice = price,
+                intradayCloses = listOf(100.0, price)
+            )
+        }
+
+        val withAapl = PortfolioRegistry.computePortfolioQuote(nonAaplData, 1700000000000L, emptySet())
+        val withoutAapl = PortfolioRegistry.computePortfolioQuote(nonAaplData, 1700000000000L, setOf("aapl"))
+
+        // Excluding +10% AAPL drops portfolio score back to 100.00
+        assertTrue(withAapl.price > 100.5)
+        assertEquals(100.0, withoutAapl.price, 0.001)
+
+        val expectedSubsetWeight = kotlin.math.round((PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT - aaplTicker.weightPercent) * 100.0) / 100.0
+        assertEquals(expectedSubsetWeight, PortfolioRegistry.rawWeightPercentFor(setOf("aapl")), 0.001)
+
+        val subsetUiState = MarketUiStateBuilder.buildPortfolioCardState(
+            normalizedQuote = withAapl,
+            weightMode = PortfolioWeightMode.NORMALIZED_100,
+            disabledHoldingIds = setOf("aapl")
+        )
+        assertEquals(36, subsetUiState.enabledHoldingsCount)
+        assertEquals(37, subsetUiState.totalHoldingsCount)
+        assertEquals(expectedSubsetWeight, subsetUiState.activeRawWeightPercent, 0.001)
+    }
+
+    @Test
+    fun customWeightsShiftWeightedPortfolioReturnAndResetRestoresDefaults() {
+        val aaplTicker = PortfolioRegistry.HOLDINGS.first { it.id == "aapl" }
+        val nonAaplData = PortfolioRegistry.UNIQUE_YAHOO_TICKERS.associateWith { ticker ->
+            val price = if (ticker == aaplTicker.yahooTicker) 110.0 else 100.0
+            TickerIntradayData(
+                yahooTicker = ticker,
+                previousClose = 100.0,
+                currentPrice = price,
+                intradayCloses = listOf(100.0, price)
+            )
+        }
+
+        val withDefault = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = nonAaplData,
+            timestampMillis = 1700000000000L
+        )
+        val boostedWeights = mapOf("aapl" to 25.0)
+        val withBoostedAapl = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = nonAaplData,
+            timestampMillis = 1700000000000L,
+            customWeights = boostedWeights
+        )
+
+        val expectedRawBoosted =
+            kotlin.math.round((PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT - aaplTicker.weightPercent + 25.0) * 100.0) / 100.0
+        assertEquals(expectedRawBoosted, PortfolioRegistry.rawWeightPercentFor(customWeights = boostedWeights), 0.01)
+        assertTrue(withBoostedAapl.price > withDefault.price + 1.5)
+
+        val restoredDefault = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = nonAaplData,
+            timestampMillis = 1700000000000L,
+            customWeights = emptyMap()
+        )
+        assertEquals(withDefault.price, restoredDefault.price, 0.001)
+        assertEquals(PortfolioRegistry.TOTAL_RAW_WEIGHT_PERCENT, PortfolioRegistry.rawWeightPercentFor(), 0.001)
+    }
 }

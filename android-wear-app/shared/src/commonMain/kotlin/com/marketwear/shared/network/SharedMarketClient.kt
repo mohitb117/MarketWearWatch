@@ -9,6 +9,7 @@ import com.marketwear.shared.model.TickerIntradayData
 import com.marketwear.shared.platform.createPlatformHttpClient
 import com.marketwear.shared.platform.currentTimeMillis
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.RefreshPolicy
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -44,6 +45,7 @@ class SharedMarketClient(
     private var lastCoreFetchMillis: Long = 0L
 
     private var cachedPortfolioQuote: IndexQuote? = null
+    private var cachedTickerIntradayMap: Map<String, TickerIntradayData> = emptyMap()
     private var lastPortfolioFetchMillis: Long = 0L
 
     companion object {
@@ -91,11 +93,58 @@ class SharedMarketClient(
         return response.bodyAsText()
     }
 
-    suspend fun fetchAllQuotes(forceRefresh: Boolean = false): List<IndexQuote> = fetchAllMutex.withLock {
+    fun getCachedPortfolioTickerData(): Map<String, TickerIntradayData> = cachedTickerIntradayMap
+
+    suspend fun seedPortfolioTickerCache(
+        data: Map<String, TickerIntradayData>,
+        timestampMillis: Long = currentTimeMillis(),
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ) = portfolioMutex.withLock {
+        if (data.isEmpty()) return@withLock
+        cachedTickerIntradayMap = data
+        cachedPortfolioQuote = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = data,
+            timestampMillis = timestampMillis,
+            disabledHoldingIds = disabledHoldingIds,
+            customWeights = customWeights
+        )
+        if (lastPortfolioFetchMillis == 0L) {
+            lastPortfolioFetchMillis = timestampMillis
+        }
+    }
+
+    fun recomputePortfolioQuote(
+        disabledHoldingIds: Set<String>,
+        customWeights: Map<String, Double> = emptyMap(),
+        timestampMillis: Long = lastPortfolioFetchMillis.takeIf { it > 0L } ?: currentTimeMillis()
+    ): IndexQuote? {
+        val data = cachedTickerIntradayMap
+        if (data.isEmpty()) return cachedPortfolioQuote
+        val recomputed = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = data,
+            timestampMillis = timestampMillis,
+            disabledHoldingIds = disabledHoldingIds,
+            customWeights = customWeights
+        )
+        cachedPortfolioQuote = recomputed
+        return recomputed
+    }
+
+    suspend fun fetchAllQuotes(
+        policy: RefreshPolicy = RefreshPolicy.CACHE_FIRST,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ): List<IndexQuote> = fetchAllMutex.withLock {
         val now = currentTimeMillis()
         val coreTtl = if (isUsMarketWindowActive()) ACTIVE_CORE_CACHE_MS else OFF_HOURS_CORE_CACHE_MS
-        if (!forceRefresh && cachedAllQuotes.isNotEmpty() && (now - lastCoreFetchMillis) < coreTtl) {
-            return@withLock cachedAllQuotes
+        if (policy == RefreshPolicy.CACHE_FIRST && cachedAllQuotes.isNotEmpty() && (now - lastCoreFetchMillis) < coreTtl) {
+            val refreshedPortfolio = recomputePortfolioQuote(disabledHoldingIds, customWeights)
+            return@withLock if (refreshedPortfolio != null) {
+                listOf(refreshedPortfolio) + cachedAllQuotes.filter { it.symbol != PortfolioRegistry.PORTFOLIO_SYMBOL }
+            } else {
+                cachedAllQuotes
+            }
         }
 
         val coreQuotes = coroutineScope {
@@ -116,7 +165,16 @@ class SharedMarketClient(
             return@withLock cachedAllQuotes
         }
 
-        val portfolioQuote = fetchOrReusePortfolioQuote()
+        val portfolioPolicy = when (policy) {
+            RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO -> RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
+            RefreshPolicy.CACHE_FIRST,
+            RefreshPolicy.FORCE_CORE_QUOTES -> RefreshPolicy.CACHE_FIRST
+        }
+        val portfolioQuote = fetchOrReusePortfolioQuote(
+            policy = portfolioPolicy,
+            disabledHoldingIds = disabledHoldingIds,
+            customWeights = customWeights
+        )
         val combined = if (portfolioQuote != null) {
             listOf(portfolioQuote) + coreQuotes
         } else {
@@ -128,13 +186,27 @@ class SharedMarketClient(
     }
 
     /**
-     * Fetches the 37 portfolio positions at most once every 2 hours; reuses cached score otherwise.
+     * Fetches the 37 portfolio positions at most once every 2 hours unless
+     * [RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO] is requested; reuses cached ticker data otherwise
+     * and recomputes dynamically for [disabledHoldingIds].
      */
-    suspend fun fetchOrReusePortfolioQuote(forceRefresh: Boolean = false): IndexQuote? = portfolioMutex.withLock {
+    suspend fun fetchOrReusePortfolioQuote(
+        policy: RefreshPolicy = RefreshPolicy.CACHE_FIRST,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ): IndexQuote? = portfolioMutex.withLock {
         val now = currentTimeMillis()
-        val existing = cachedPortfolioQuote
-        if (!forceRefresh && existing != null && (now - lastPortfolioFetchMillis) < PORTFOLIO_REFRESH_INTERVAL_MS) {
-            return@withLock existing
+        val existingMap = cachedTickerIntradayMap
+        val allowPortfolioCache = policy != RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
+        if (allowPortfolioCache && existingMap.isNotEmpty() && (now - lastPortfolioFetchMillis) < PORTFOLIO_REFRESH_INTERVAL_MS) {
+            val recomputed = PortfolioRegistry.computePortfolioQuote(
+                dataByYahooTicker = existingMap,
+                timestampMillis = lastPortfolioFetchMillis,
+                disabledHoldingIds = disabledHoldingIds,
+                customWeights = customWeights
+            )
+            cachedPortfolioQuote = recomputed
+            return@withLock recomputed
         }
 
         val tickerDataPairs = coroutineScope {
@@ -152,11 +224,17 @@ class SharedMarketClient(
         }
 
         if (tickerDataPairs.isEmpty()) {
-            return@withLock existing
+            return@withLock cachedPortfolioQuote
         }
 
         val dataMap = tickerDataPairs.associateBy { it.yahooTicker }
-        val computed = PortfolioRegistry.computePortfolioQuote(dataMap, now)
+        cachedTickerIntradayMap = dataMap
+        val computed = PortfolioRegistry.computePortfolioQuote(
+            dataByYahooTicker = dataMap,
+            timestampMillis = now,
+            disabledHoldingIds = disabledHoldingIds,
+            customWeights = customWeights
+        )
         cachedPortfolioQuote = computed
         lastPortfolioFetchMillis = now
         computed
