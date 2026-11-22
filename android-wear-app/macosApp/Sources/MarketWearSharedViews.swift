@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 /// Obsidian Terminal Design System tokens matching MarketWatchAIStudio (`docs/DESIGN_SYSTEM.md`).
 enum ObsidianTheme {
+    static let notchHardwareBlack = Color.black
     static let background = Color(hex: 0x070B11)
     static let surface = Color(hex: 0x0E1520)
     static let surfaceContainer = Color(hex: 0x151F2E)
@@ -384,3 +386,87 @@ struct InteractivePortfolioIslandChart: View {
         return path
     }
 }
+
+enum DisplayNotchPresence: Equatable {
+    case hardwareNotch
+    case standardDisplay
+}
+
+/// Hardware display notch geometry derived dynamically from `NSScreen` safe area and auxiliary top bars.
+struct NotchMetrics: Equatable {
+    let presence: DisplayNotchPresence
+    let notchWidth: CGFloat
+    let notchHeight: CGFloat
+    let targetScreenFrame: CGRect
+
+    var shoulderRadius: CGFloat {
+        presence == .hardwareNotch ? 10 : 8
+    }
+
+    static func preferredScreen() -> NSScreen? {
+        NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    static func detect(screen: NSScreen? = preferredScreen()) -> NotchMetrics {
+        guard let screen else {
+            return NotchMetrics(
+                presence: .standardDisplay,
+                notchWidth: 0,
+                notchHeight: 32,
+                targetScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
+            )
+        }
+        let topInset = screen.safeAreaInsets.top
+        if topInset > 0 {
+            let rawCutout: CGFloat = {
+                if let left = screen.auxiliaryTopLeftArea,
+                   let right = screen.auxiliaryTopRightArea,
+                   left.width > 0, right.width > 0 {
+                    return max(0, screen.frame.width - left.width - right.width)
+                }
+                return 200
+            }()
+            let paddedCutout = min(max(ceil(rawCutout) + 12, 180), 260)
+            return NotchMetrics(
+                presence: .hardwareNotch,
+                notchWidth: paddedCutout,
+                notchHeight: max(ceil(topInset), 32),
+                targetScreenFrame: screen.frame
+            )
+        }
+        return NotchMetrics(
+            presence: .standardDisplay,
+            notchWidth: 0,
+            notchHeight: 32,
+            targetScreenFrame: screen.frame
+        )
+    }
+}
+
+/// Top-flush MacBook notch silhouette with concave top shoulder flares and rounded bottom corners.
+struct NotchIslandShape: Shape {
+    let shoulderRadius: CGFloat
+    let bottomRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        let s = min(shoulderRadius, w * 0.15, h * 0.45)
+        let b = min(bottomRadius, max(0, (w - s * 2) / 2), max(0, (h - s) * 0.9))
+
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))
+        // Concave left shoulder flaring seamlessly from the top display bezel
+        p.addQuadCurve(to: CGPoint(x: s, y: s), control: CGPoint(x: s, y: 0))
+        p.addLine(to: CGPoint(x: s, y: h - b))
+        p.addQuadCurve(to: CGPoint(x: s + b, y: h), control: CGPoint(x: s, y: h))
+        p.addLine(to: CGPoint(x: w - s - b, y: h))
+        p.addQuadCurve(to: CGPoint(x: w - s, y: h - b), control: CGPoint(x: w - s, y: h))
+        p.addLine(to: CGPoint(x: w - s, y: s))
+        // Concave right shoulder flaring back out along the top bezel
+        p.addQuadCurve(to: CGPoint(x: w, y: 0), control: CGPoint(x: w - s, y: 0))
+        p.closeSubpath()
+        return p
+    }
+}
+
