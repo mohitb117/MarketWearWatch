@@ -20,6 +20,8 @@ import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.wear.ongoing.OngoingActivity
+import androidx.wear.ongoing.Status
 import com.marketwear.indices.MainActivity
 import com.marketwear.indices.R
 import com.marketwear.shared.model.IndexQuote
@@ -203,7 +205,7 @@ class WatchLiveNotificationManager(private val context: Context) {
             openOnPhoneIntent
         ).build()
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(arrowIconRes)
             .setLargeIcon(badgeBitmap)
             .setContentTitle(collapsedTitle)
@@ -214,14 +216,38 @@ class WatchLiveNotificationManager(private val context: Context) {
             .setOngoing(true)
             .setLocalOnly(true)
             .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(watchLaunchIntent)
             .addAction(openOnWatchAction)
             .addAction(openOnPhoneAction)
-            .build()
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        // Attach Wear OS OngoingActivity metadata so Wear OS SystemUI registers this as an
+        // official ongoing activity (pinned at the top of the notification tray + watch face indicator)
+        // while keeping the expandable BigPictureStyle graphic card and 2 separate action buttons.
+        runCatching {
+            val ongoingStatus = Status.Builder()
+                .addTemplate(collapsedTitle)
+                .build()
+            val ongoingActivity = OngoingActivity.Builder(
+                context,
+                NOTIFICATION_ID,
+                notificationBuilder
+            )
+                .setStaticIcon(arrowIconRes)
+                .setTouchIntent(watchLaunchIntent)
+                .setStatus(ongoingStatus)
+                .build()
+            ongoingActivity.apply(context)
+        }
+
+        val notification = notificationBuilder.build()
+        runCatching {
+            WatchLiveForegroundService.startOrUpdate(context, notification)
+        }.onFailure {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
     }
 
     /**

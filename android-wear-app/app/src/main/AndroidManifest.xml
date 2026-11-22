@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".MarketWearApplication"
@@ -55,6 +57,16 @@
                 <action android:name="com.marketwear.indices.action.OPEN_ON_PHONE" />
             </intent-filter>
         </receiver>
+
+        <!-- Watch Ongoing Portfolio Foreground Service -->
+        <service
+            android:name=".notification.WatchLiveForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live on-wrist ongoing portfolio notification and watch face OngoingActivity" />
+        </service>
 
         <!-- S&P 500 Complication Provider Service -->
         <service

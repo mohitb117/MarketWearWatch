@@ -24,6 +24,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version = "1.1
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 watchface-complications-data-source = { group = "androidx.wear.watchface", name = "watchface-complications-data-source-ktx", version.ref = "watchface" }
 watchface-complications-data = { group = "androidx.wear.watchface", name = "watchface-complications-data", version.ref = "watchface" }
+wear-ongoing = { group = "androidx.wear", name = "wear-ongoing", version = "1.1.0" }
 
 # Kotlin Serialization & Coroutines
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }

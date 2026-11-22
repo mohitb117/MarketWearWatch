@@ -53,9 +53,10 @@ composeCompiler {
 dependencies {
     implementation(project(":shared"))
 
-    // Official AndroidX Wear Watch Face Complications API
+    // Official AndroidX Wear Watch Face Complications API & Ongoing Activity API
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.2.1")
     implementation("androidx.wear.watchface:watchface-complications-data:1.2.1")
+    implementation(libs.wear.ongoing)
 
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)

@@ -183,10 +183,18 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             )
         }
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        // Start or update the ForegroundService so Android 14/15/16 and Samsung One UI 8
+        // mark this notification with FLAG_FOREGROUND_SERVICE (isForegroundService=true),
+        // making it non-dismissible and eligible for PromotedOngoing / NowBar status bar chip.
+        runCatching {
+            PortfolioLiveForegroundService.startOrUpdate(context, notification)
+        }.onFailure {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
     }
 
     fun dismiss() {
+        runCatching { PortfolioLiveForegroundService.stop(context) }
         notificationManager.cancel(NOTIFICATION_ID)
     }
 
@@ -241,6 +249,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             .setLocalOnly(true)
             .setOnlyAlertOnce(true)
             .setRequestPromotedOngoing(true)
+            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
             .setStyle(progressStyle)
@@ -296,6 +305,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             .setOngoing(true)
             .setLocalOnly(true)
             .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
             .addAction(
