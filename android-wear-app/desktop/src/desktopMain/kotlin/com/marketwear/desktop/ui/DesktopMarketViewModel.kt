@@ -23,6 +23,7 @@ import com.marketwear.shared.ui.PortfolioWeightMode
 import com.marketwear.shared.ui.RefreshPolicy
 import com.marketwear.shared.ui.RefreshState
 import com.marketwear.shared.ui.WeightResetAction
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -106,6 +108,8 @@ class DesktopMarketViewModel(
             reducer = DesktopReducer
         )
 
+    private val refreshWaiters = mutableListOf<CompletableDeferred<DesktopMarketUiState>>()
+
     val uiState: StateFlow<DesktopMarketUiState> = store.states.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -114,6 +118,30 @@ class DesktopMarketViewModel(
 
     fun onIntent(intent: DesktopMarketIntent) {
         store.accept(intent)
+    }
+
+    suspend fun refreshLive(policy: RefreshPolicy = RefreshPolicy.FORCE_CORE_QUOTES): DesktopMarketUiState {
+        val deferred = CompletableDeferred<DesktopMarketUiState>()
+        synchronized(refreshWaiters) {
+            refreshWaiters.add(deferred)
+        }
+        onIntent(DesktopMarketIntent.Core(MarketIntent.RequestRefresh(policy)))
+        return try {
+            withTimeout(15000L) {
+                deferred.await()
+            }
+        } catch (_: Exception) {
+            uiState.value
+        }
+    }
+
+    private fun notifyRefreshComplete(state: DesktopMarketUiState) {
+        val waiters = synchronized(refreshWaiters) {
+            val copy = refreshWaiters.toList()
+            refreshWaiters.clear()
+            copy
+        }
+        waiters.forEach { it.complete(state) }
     }
 
     fun dispose() {
@@ -250,6 +278,15 @@ class DesktopMarketViewModel(
                     } else {
                         combined
                     }
+                    val nextState = buildUiState(
+                        scenario = DesktopSimulationScenario.LIVE_NETWORK,
+                        quotes = finalQuotes,
+                        weightMode = latest.portfolioState.weightMode,
+                        refreshState = RefreshState.IDLE,
+                        errorMessage = null,
+                        disabledHoldingIds = latest.disabledHoldingIds,
+                        customWeights = latest.customWeights
+                    )
                     dispatch(
                         Message.QuotesChanged(
                             scenario = DesktopSimulationScenario.LIVE_NETWORK,
@@ -258,8 +295,15 @@ class DesktopMarketViewModel(
                             customWeights = latest.customWeights
                         )
                     )
+                    notifyRefreshComplete(nextState)
                 } catch (e: Exception) {
-                    dispatch(Message.RefreshFailed(e.message ?: "Live network fetch failed"))
+                    val errorMsg = e.message ?: "Live network fetch failed"
+                    val errorState = state().copy(
+                        refreshState = RefreshState.ERROR,
+                        errorMessage = errorMsg
+                    )
+                    dispatch(Message.RefreshFailed(errorMsg))
+                    notifyRefreshComplete(errorState)
                 }
             }
         }
