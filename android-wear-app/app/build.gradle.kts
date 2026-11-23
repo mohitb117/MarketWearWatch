@@ -58,6 +58,13 @@ dependencies {
     implementation("androidx.wear.watchface:watchface-complications-data:1.2.1")
     implementation(libs.wear.ongoing)
 
+    // Wear OS Tiles API & ProtoLayout (High-Level At A Glance Watch Widget)
+    implementation("androidx.wear.tiles:tiles:1.4.0")
+    implementation("androidx.wear.tiles:tiles-material:1.4.0")
+    implementation("androidx.wear.protolayout:protolayout:1.2.0")
+    implementation("androidx.wear.protolayout:protolayout-material:1.2.0")
+    implementation("androidx.concurrent:concurrent-futures:1.2.0")
+
     // Kotlinx Serialization
     implementation(libs.kotlinx.serialization.json)
 

@@ -6,4 +6,6 @@
     <string name="complication_dual_label">Dual Market (SPX + NDX)</string>
     <string name="refresh">Refresh</string>
     <string name="updating">Updating…</string>
+    <string name="tile_portfolio_label">MarketWear Portfolio</string>
+    <string name="tile_portfolio_description">At-a-glance daily portfolio score and market trend preview</string>
 </resources>

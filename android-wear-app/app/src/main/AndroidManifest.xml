@@ -144,5 +144,21 @@
                 android:value="3600" />
         </service>
 
+        <!-- MarketWear Portfolio Tile (Wear OS At-a-Glance Watch Widget) -->
+        <service
+            android:name=".tile.MarketWearPortfolioTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher"
+            android:label="@string/tile_portfolio_label"
+            android:description="@string/tile_portfolio_description"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_launcher" />
+        </service>
+
     </application>
 </manifest>
