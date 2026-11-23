@@ -13,22 +13,22 @@ import androidx.compose.ui.unit.sp
  */
 object MarketWearPalette {
     // Dark theme surfaces & accents (Obsidian Terminal Palette)
-    val DarkBackground = Color(0xFF070B11)
-    val DarkSurface = Color(0xFF0E1520)
-    val DarkSurfaceVariant = Color(0xFF151F2E)
-    val DarkSurfaceElevated = Color(0xFF151F2E)
-    val DarkSurfaceHigh = Color(0xFF1D2A3D)
-    val DarkHairlineBorder = Color(0xFF28384F)
+    val DarkBackground = Color(0xFF06090E)
+    val DarkSurface = Color(0xFF0C111A)
+    val DarkSurfaceVariant = Color(0xFF131A26)
+    val DarkSurfaceElevated = Color(0xFF182130)
+    val DarkSurfaceHigh = Color(0xFF1F2B3E)
+    val DarkHairlineBorder = Color(0xFF223046)
     val DarkPrimary = Color(0xFF38BDF8)
     val DarkOnPrimary = Color(0xFF042233)
-    val DarkPrimaryContainer = Color(0xFF10324A)
+    val DarkPrimaryContainer = Color(0xFF0E3047)
     val DarkOnPrimaryContainer = Color(0xFFBAE6FD)
     val DarkTextPrimary = Color(0xFFF1F5F9)
-    val DarkTextSecondary = Color(0xFF94A3B8)
-    val DarkError = Color(0xFFFB7185)
+    val DarkTextSecondary = Color(0xFF8B9BB4)
+    val DarkError = Color(0xFFFF453A)
     val DarkOnError = Color(0xFF3F0614)
-    val DarkErrorContainer = Color(0xFF38131E)
-    val DarkOnErrorContainer = Color(0xFFFECDD3)
+    val DarkErrorContainer = Color(0xFF381016)
+    val DarkOnErrorContainer = Color(0xFFFFD1D6)
 
     // Light theme surfaces & accents (Daylight Terminal Palette)
     val LightBackground = Color(0xFFF3F6FA)
@@ -41,29 +41,29 @@ object MarketWearPalette {
     val LightTextPrimary = Color(0xFF0F172A)
     val LightTextSecondary = Color(0xFF475569)
 
-    // Trend, Bipolar Progress & Chart Colors
-    val PositiveTrend = Color(0xFF34D399)
-    val NegativeTrend = Color(0xFFFB7185)
-    val PositivePillBg = Color(0xFF0B2E24)
-    val NegativePillBg = Color(0xFF38131E)
-    val AmberAccent = Color(0xFFFBBF24)
-    val AmberPillBg = Color(0xFF332609)
-    val NeutralPillBg = Color(0xFF1E293B)
+    // Trend, Bipolar Progress & Chart Colors (Obsidian Pro Emerald & Crimson)
+    val PositiveTrend = Color(0xFF00E676)
+    val NegativeTrend = Color(0xFFFF3B30)
+    val PositivePillBg = Color(0xFF062A1B)
+    val NegativePillBg = Color(0xFF2B0C11)
+    val AmberAccent = Color(0xFFFFB300)
+    val AmberPillBg = Color(0xFF2D1F05)
+    val NeutralPillBg = Color(0xFF141C28)
     val SecondaryCurve = Color(0xFF38BDF8).copy(alpha = 0.72f)
-    val BaselineRule = Color(0xFF64748B)
+    val BaselineRule = Color(0xFF566982)
     val BaselineTick = Color(0xFFE2E8F0)
-    val TrackBackground = Color(0xFF1E293B)
-    val BaselineSlate = Color(0xFF334155)
-    val WatchBezelOuter = Color(0xFF1C2430)
+    val TrackBackground = Color(0xFF141C28)
+    val BaselineSlate = Color(0xFF28364A)
+    val WatchBezelOuter = Color(0xFF182230)
     val WatchBezelInner = Color(0xFF05080D)
 
     // Watch Status Chip Colors
-    val ConnectedBg = Color(0xFF0B2E24)
-    val ConnectedDot = Color(0xFF34D399)
-    val ConnectedText = Color(0xFFA7F3D0)
-    val DisconnectedBg = Color(0xFF38131E)
-    val DisconnectedDot = Color(0xFFFB7185)
-    val DisconnectedText = Color(0xFFFECDD3)
+    val ConnectedBg = Color(0xFF062A1B)
+    val ConnectedDot = Color(0xFF00E676)
+    val ConnectedText = Color(0xFF84F5C0)
+    val DisconnectedBg = Color(0xFF2B0C11)
+    val DisconnectedDot = Color(0xFFFF3B30)
+    val DisconnectedText = Color(0xFFFFB3BA)
 }
 
 /**
@@ -150,25 +150,25 @@ object MarketWearTextStyles {
     val Tabular = TextStyle(fontFeatureSettings = "tnum")
 
     val TabularHero = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 34.sp,
-        lineHeight = 38.sp,
-        letterSpacing = (-0.8).sp,
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 38.sp,
+        lineHeight = 42.sp,
+        letterSpacing = (-1.0).sp,
         fontFeatureSettings = "tnum"
     )
 
     val TabularMetric = TextStyle(
-        fontFamily = FontFamily.Monospace,
+        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
-        fontSize = 18.sp,
-        lineHeight = 22.sp,
-        letterSpacing = (-0.3).sp,
+        fontSize = 19.sp,
+        lineHeight = 23.sp,
+        letterSpacing = (-0.4).sp,
         fontFeatureSettings = "tnum"
     )
 
     val TabularSmall = TextStyle(
-        fontFamily = FontFamily.Monospace,
+        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
         lineHeight = 16.sp,

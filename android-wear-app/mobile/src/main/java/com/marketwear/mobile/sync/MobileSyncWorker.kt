@@ -50,14 +50,17 @@ class MobileSyncWorker(
                 disabledHoldingIds = disabledIds,
                 customWeights = customWeights
             )
+            selectionStore.saveCachedQuotes(quotes)
 
             prefs.edit().putLong(KEY_LAST_BG_SYNC, now).apply()
 
             if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
                 liveNotificationManager.showOrUpdateFromQuotes(
                     quotes = quotes,
+                    weightMode = selectionStore.weightMode.value,
                     disabledHoldingIds = disabledIds,
-                    customWeights = customWeights
+                    customWeights = customWeights,
+                    expansionMode = selectionStore.notificationExpansionMode.value
                 )
             }
 

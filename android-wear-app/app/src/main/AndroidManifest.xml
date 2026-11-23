@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".MarketWearApplication"
@@ -43,6 +47,25 @@
                     android:pathPrefix="/market"
                     android:scheme="wear" />
             </intent-filter>
+        </service>
+
+        <!-- Watch Notification "Open on Phone" Action Receiver -->
+        <receiver
+            android:name=".notification.WatchOpenOnPhoneReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.marketwear.indices.action.OPEN_ON_PHONE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Watch Ongoing Portfolio Foreground Service -->
+        <service
+            android:name=".notification.WatchLiveForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live on-wrist ongoing portfolio notification and watch face OngoingActivity" />
         </service>
 
         <!-- S&P 500 Complication Provider Service -->
@@ -107,7 +130,7 @@
             android:name=".PortfolioScoreComplicationService"
             android:exported="true"
             android:icon="@drawable/ic_trend_up"
-            android:label="Portfolio Score"
+            android:label="@string/complication_portfolio_label"
             android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
             <intent-filter>
                 <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
@@ -119,6 +142,26 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="3600" />
+        </service>
+
+        <!-- MarketWear Portfolio Tile (Wear OS At-a-Glance Watch Widget) -->
+        <service
+            android:name=".tile.MarketWearPortfolioTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_trend_up"
+            android:label="@string/tile_portfolio_label"
+            android:description="@string/tile_portfolio_description"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+                <action android:name="androidx.glance.wear.action.BIND_WIDGET_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
+            <meta-data
+                android:name="com.google.android.clockwork.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
         </service>
 
     </application>

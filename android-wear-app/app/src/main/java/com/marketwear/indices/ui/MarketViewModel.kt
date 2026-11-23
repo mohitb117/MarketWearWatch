@@ -10,6 +10,7 @@ import com.arkivanov.mvikotlin.main.store.DefaultStoreFactory
 import com.marketwear.indices.data.IndexQuote
 import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
+import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.ui.MarketIntent
 import com.marketwear.shared.ui.MarketStore
@@ -45,6 +46,7 @@ class MarketViewModel(
     application: Application,
     private val repository: MarketRepository,
     private val selectionStore: WatchPortfolioSelectionStore = WatchPortfolioSelectionStore(application),
+    private val liveNotificationManager: WatchLiveNotificationManager = WatchLiveNotificationManager(application),
     storeFactory: StoreFactory = DefaultStoreFactory()
 ) : AndroidViewModel(application) {
 
@@ -104,6 +106,18 @@ class MarketViewModel(
             selectionStore.cachedTickerIntradayData.drop(1).collect { intraday ->
                 if (intraday.isNotEmpty()) {
                     store.accept(MarketStore.Intent.ExternalQuotesUpdated(store.state.quotes))
+                }
+            }
+        }
+        viewModelScope.launch {
+            store.states.collect { state ->
+                if (state.quotes.isNotEmpty()) {
+                    liveNotificationManager.showOrUpdateFromQuotes(
+                        quotes = state.quotes,
+                        weightMode = state.weightMode,
+                        disabledHoldingIds = state.disabledHoldingIds,
+                        customWeights = state.customWeights
+                    )
                 }
             }
         }

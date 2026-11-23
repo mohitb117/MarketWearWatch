@@ -194,7 +194,9 @@ object MarketUiStateBuilder {
         val liveUpdateSpec = PortfolioLiveUpdateFormatter.buildSpec(
             activeQuote = activeQuote,
             enabledHoldingsCount = enabledHoldingsCount,
-            totalHoldingsCount = totalHoldingsCount
+            totalHoldingsCount = totalHoldingsCount,
+            modeBadgeLabel = mobileModePillLabel,
+            secondarySummaryLine = mobileSecondarySummary
         )
 
         return PortfolioCardUiState(

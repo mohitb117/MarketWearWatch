@@ -9,6 +9,7 @@ import com.marketwear.indices.data.IndexQuote
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
+import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.indices.sync.MarketSyncWorker
 import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.PortfolioRegistry
@@ -23,6 +24,7 @@ class MarketWearableListenerService : WearableListenerService(), KoinComponent {
 
     private val db: MarketDatabase by inject()
     private val selectionStore: WatchPortfolioSelectionStore by inject()
+    private val liveNotificationManager: WatchLiveNotificationManager by inject()
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
@@ -83,6 +85,11 @@ class MarketWearableListenerService : WearableListenerService(), KoinComponent {
 
             if (entities.isNotEmpty()) {
                 db.indexQuoteDao().insertOrUpdate(entities)
+                liveNotificationManager.showOrUpdateFromQuotes(
+                    quotes = entities.map { it.toDomainModel() },
+                    disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+                    customWeights = selectionStore.customWeights.value
+                )
                 MarketSyncWorker.triggerComplicationUpdates(applicationContext)
             }
         }
@@ -113,6 +120,11 @@ class MarketWearableListenerService : WearableListenerService(), KoinComponent {
                         customWeights = selectionStore.customWeights.value
                     )
                     db.indexQuoteDao().insertOrUpdate(IndexQuoteEntity.fromDomainModel(recomputed))
+                    liveNotificationManager.showOrUpdateFromQuotes(
+                        quotes = listOf(recomputed),
+                        disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+                        customWeights = selectionStore.customWeights.value
+                    )
                     MarketSyncWorker.triggerComplicationUpdates(applicationContext)
                 }
             } catch (_: Exception) {

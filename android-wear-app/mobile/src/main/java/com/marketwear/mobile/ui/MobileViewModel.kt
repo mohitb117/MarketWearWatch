@@ -16,6 +16,7 @@ import com.marketwear.shared.ui.LiveNotificationDeliveryState
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.MarketUiStateBuilder
+import com.marketwear.shared.ui.NotificationExpansionMode
 import com.marketwear.shared.ui.PortfolioWeightMode
 import com.marketwear.shared.ui.RefreshState
 import com.marketwear.shared.ui.SectorDisplayMode
@@ -77,6 +78,7 @@ class MobileViewModel(
             customWeights: Map<String, Double> = emptyMap(),
             liveNotificationPreference: LiveNotificationPreference = LiveNotificationPreference.ACTIVE,
             liveNotificationState: LiveNotificationDeliveryState = LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE,
+            notificationExpansionMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED,
             activeTab: MobileAppTab = MobileAppTab.PULSE,
             sectorDisplayMode: SectorDisplayMode = SectorDisplayMode.HEATMAP,
             sectorSortOrder: SectorSortOrder = SectorSortOrder.TOP_GAINERS,
@@ -107,6 +109,7 @@ class MobileViewModel(
                 customWeights = customWeights,
                 liveNotificationPreference = liveNotificationPreference,
                 liveNotificationState = liveNotificationState,
+                notificationExpansionMode = notificationExpansionMode,
                 activeTab = activeTab,
                 sectorDisplayMode = sectorDisplayMode,
                 sectorSortOrder = sectorSortOrder,

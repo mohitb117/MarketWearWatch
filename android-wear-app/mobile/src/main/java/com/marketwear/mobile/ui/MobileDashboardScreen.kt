@@ -28,27 +28,35 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +75,9 @@ import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.ui.LiveNotificationDeliveryState
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.MarketIntent
+import com.marketwear.shared.ui.NotificationExpansionMode
+import com.marketwear.shared.ui.PortfolioLiveUpdateSpec
+import com.marketwear.shared.ui.PortfolioMomentumBand
 import com.marketwear.shared.ui.MarketSessionStatus
 import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.PortfolioWeightMode
@@ -75,6 +86,7 @@ import com.marketwear.shared.ui.RefreshState
 import com.marketwear.shared.ui.SectorDisplayMode
 import com.marketwear.shared.ui.WatchConnectionState
 import com.marketwear.sharedui.components.IndexMetricCard
+import com.marketwear.sharedui.components.LiveUpdateNotificationPreviewCard
 import com.marketwear.sharedui.components.MarketDashboardBody
 import com.marketwear.sharedui.components.MarketNavGlyph
 import com.marketwear.sharedui.components.MarketSessionPill
@@ -183,6 +195,8 @@ fun MobileDashboardContent(
         onIntent(MobileMarketIntent.SelectTab(MobileAppTab.PULSE))
     }
 
+    var showLiveNotificationSheet by rememberSaveable { mutableStateOf(false) }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -238,22 +252,68 @@ fun MobileDashboardContent(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.weight(1f, fill = false)
                                 ) {
-                                    Text(
-                                        text = "MarketWear",
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = MarketWearTextSizes.TopBarTitle,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    MarketSessionPill(status = uiState.marketSessionStatus)
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "MarketWear",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = MarketWearTextSizes.TopBarTitle,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            MarketSessionPill(status = uiState.marketSessionStatus)
+                                        }
+                                        Text(
+                                            text = "Synced ${uiState.formattedLastSynced}",
+                                            style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val isRefreshing = uiState.refreshState == RefreshState.REFRESHING
+                                    Box(
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                            .clickable(enabled = !isRefreshing) {
+                                                onIntent(
+                                                    MobileMarketIntent.Core(
+                                                        MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)
+                                                    )
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isRefreshing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(14.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "↻",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+
                                     LiveNotificationChip(
                                         state = uiState.liveNotificationState,
-                                        onClick = onToggleLiveNotification
+                                        spec = uiState.portfolioState.liveUpdateSpec,
+                                        onClick = { showLiveNotificationSheet = true }
                                     )
                                     WatchStatusChip(connectionState = uiState.watchConnectionState)
                                 }
@@ -266,77 +326,16 @@ fun MobileDashboardContent(
                     )
                 },
                 bottomBar = {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = if (useNavigationRail) Modifier else Modifier.navigationBarsPadding()
+                    if (!useNavigationRail) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            HorizontalDivider(
-                                thickness = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = MarketWearDimens.ScreenPadding, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(end = 10.dp)
-                                ) {
-                                    Text(
-                                        text = "Watch Sync",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = uiState.formattedLastSynced,
-                                        style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                val isRefreshing = uiState.refreshState == RefreshState.REFRESHING
-                                Button(
-                                    onClick = {
-                                        onIntent(
-                                            MobileMarketIntent.Core(
-                                                MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)
-                                            )
-                                        )
-                                    },
-                                    enabled = !isRefreshing,
-                                    shape = MarketWearShapes.TogglePill,
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                ) {
-                                    when (uiState.refreshState) {
-                                        RefreshState.REFRESHING -> {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(15.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.onPrimary
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Syncing...", fontWeight = FontWeight.SemiBold)
-                                        }
-                                        RefreshState.IDLE -> {
-                                            Text("Refresh & Sync", fontWeight = FontWeight.SemiBold)
-                                        }
-                                        RefreshState.ERROR -> {
-                                            Text("Retry Sync", fontWeight = FontWeight.SemiBold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!useNavigationRail) {
+                            Column(modifier = Modifier.navigationBarsPadding()) {
+                                HorizontalDivider(
+                                    thickness = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
                                 NavigationBar(
                                     containerColor = MaterialTheme.colorScheme.surface,
                                     windowInsets = WindowInsets(0, 0, 0, 0)
@@ -432,9 +431,7 @@ fun MobileDashboardContent(
                                         }
                                     }
                                 }
-                                LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE,
-                                LiveNotificationDeliveryState.PERMISSION_REQUIRED,
-                                LiveNotificationDeliveryState.PAUSED_BY_USER -> null
+                                else -> null
                             },
                             modifier = contentModifier
                         )
@@ -455,6 +452,140 @@ fun MobileDashboardContent(
                     }
                 }
             }
+        }
+
+        if (showLiveNotificationSheet) {
+            LiveNotificationSettingsBottomSheet(
+                uiState = uiState,
+                onDismissRequest = { showLiveNotificationSheet = false },
+                onToggleActive = onToggleLiveNotification,
+                onSelectMode = { mode ->
+                    onIntent(MobileMarketIntent.SetNotificationExpansionMode(mode))
+                },
+                onOpenPromotionSettings = onOpenPromotionSettings,
+                onIntent = { coreIntent -> onIntent(MobileMarketIntent.Core(coreIntent)) }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LiveNotificationSettingsBottomSheet(
+    uiState: MobileMarketUiState,
+    onDismissRequest: () -> Unit,
+    onToggleActive: () -> Unit,
+    onSelectMode: (NotificationExpansionMode) -> Unit,
+    onOpenPromotionSettings: () -> Unit,
+    onIntent: (MarketIntent) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Color(uiState.portfolioState.liveUpdateSpec.accentArgb))
+                )
+                Text(
+                    text = "Live Activity & Lock Screen",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = "Pin real-time portfolio score and intraday momentum to your Android lock screen and status bar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = "Live Updates Active",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (uiState.liveNotificationPreference == LiveNotificationPreference.ACTIVE)
+                                "Foreground service running with ongoing badge"
+                            else "Live bar paused",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.liveNotificationPreference == LiveNotificationPreference.ACTIVE,
+                        onCheckedChange = { onToggleActive() }
+                    )
+                }
+            }
+
+            if (uiState.liveNotificationState == LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Promote to Android 16 Live Updates pinned status-bar chip.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        )
+                        Button(
+                            onClick = onOpenPromotionSettings,
+                            shape = MarketWearShapes.TogglePill,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) {
+                            Text("Enable", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            LiveUpdateNotificationPreviewCard(
+                spec = uiState.portfolioState.liveUpdateSpec,
+                selectedMode = uiState.notificationExpansionMode,
+                onSelectMode = onSelectMode,
+                onIntent = onIntent,
+                initialExpanded = true
+            )
         }
     }
 }
@@ -526,20 +657,41 @@ private fun MobileAppTab.toNavGlyphKind(): NavGlyphKind = when (this) {
 @Composable
 private fun LiveNotificationChip(
     state: LiveNotificationDeliveryState,
+    spec: PortfolioLiveUpdateSpec,
     onClick: () -> Unit
 ) {
+    val arrowGlyph = when (spec.momentumBand) {
+        PortfolioMomentumBand.FLAT -> "→"
+        PortfolioMomentumBand.MILD_GAIN,
+        PortfolioMomentumBand.MODERATE_GAIN,
+        PortfolioMomentumBand.STRONG_GAIN -> "↗"
+        PortfolioMomentumBand.MILD_LOSS,
+        PortfolioMomentumBand.MODERATE_LOSS,
+        PortfolioMomentumBand.STRONG_LOSS -> "↘"
+    }
+    val activeChipLabel = "$arrowGlyph ${spec.shortCriticalText}"
     val (bgColor, dotColor, textColor, label) = when (state) {
-        LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE -> QuadStyle(
-            MarketWearPalette.PositivePillBg,
-            MarketWearPalette.PositiveTrend,
-            MarketWearPalette.ConnectedText,
-            "Live Bar"
-        )
+        LiveNotificationDeliveryState.PROMOTED_LIVE_UPDATE -> when (spec.momentumBand) {
+            PortfolioMomentumBand.MILD_LOSS,
+            PortfolioMomentumBand.MODERATE_LOSS,
+            PortfolioMomentumBand.STRONG_LOSS -> QuadStyle(
+                MarketWearPalette.NegativePillBg,
+                MarketWearPalette.NegativeTrend,
+                MarketWearPalette.NegativeTrend,
+                activeChipLabel
+            )
+            else -> QuadStyle(
+                MarketWearPalette.PositivePillBg,
+                MarketWearPalette.PositiveTrend,
+                MarketWearPalette.ConnectedText,
+                activeChipLabel
+            )
+        }
         LiveNotificationDeliveryState.STANDARD_ONGOING_NEEDS_OPT_IN -> QuadStyle(
             MarketWearPalette.DarkPrimaryContainer,
             MarketWearPalette.DarkPrimary,
             MarketWearPalette.DarkOnPrimaryContainer,
-            "Live Bar"
+            activeChipLabel
         )
         LiveNotificationDeliveryState.PERMISSION_REQUIRED -> QuadStyle(
             MarketWearPalette.NeutralPillBg,

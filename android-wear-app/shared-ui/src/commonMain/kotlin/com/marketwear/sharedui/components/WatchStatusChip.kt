@@ -40,13 +40,13 @@ fun WatchStatusChip(
             MarketWearPalette.ConnectedBg,
             MarketWearPalette.ConnectedDot,
             MarketWearPalette.ConnectedText,
-            "Watch Connected"
+            "Watch"
         )
         WatchConnectionState.DISCONNECTED -> StatusChipStyle(
             MarketWearPalette.DisconnectedBg,
             MarketWearPalette.DisconnectedDot,
             MarketWearPalette.DisconnectedText,
-            "Watch Offline"
+            "Offline"
         )
     }
 
@@ -66,7 +66,9 @@ fun WatchStatusChip(
             text = label,
             fontSize = MarketWearTextSizes.StatusChip,
             fontWeight = FontWeight.Medium,
-            color = textColor
+            color = textColor,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }
