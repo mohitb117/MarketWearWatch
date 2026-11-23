@@ -181,7 +181,12 @@ class MarketWearPortfolioTileService : TileService(), KoinComponent {
             )
             .build()
 
-        val layout = PrimaryLayout.Builder(requestParams.deviceConfiguration)
+        val deviceParams = requestParams.deviceConfiguration ?: androidx.wear.protolayout.DeviceParametersBuilders.DeviceParameters.Builder()
+            .setScreenWidthDp(225)
+            .setScreenHeightDp(225)
+            .build()
+
+        val layout = PrimaryLayout.Builder(deviceParams)
             .setPrimaryLabelTextContent(
                 LayoutElementBuilders.Text.Builder()
                     .setText("Portfolio Score")
@@ -195,7 +200,7 @@ class MarketWearPortfolioTileService : TileService(), KoinComponent {
             )
             .setContent(contentColumn)
             .setPrimaryChipContent(
-                CompactChip.Builder(this, "Open App", tileClickable, requestParams.deviceConfiguration)
+                CompactChip.Builder(this, "Open App", tileClickable, deviceParams)
                     .build()
             )
             .build()

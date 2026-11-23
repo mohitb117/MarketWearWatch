@@ -148,16 +148,20 @@
         <service
             android:name=".tile.MarketWearPortfolioTileService"
             android:exported="true"
-            android:icon="@drawable/ic_launcher"
+            android:icon="@drawable/ic_trend_up"
             android:label="@string/tile_portfolio_label"
             android:description="@string/tile_portfolio_description"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
             <intent-filter>
                 <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+                <action android:name="androidx.glance.wear.action.BIND_WIDGET_PROVIDER" />
             </intent-filter>
             <meta-data
                 android:name="androidx.wear.tiles.PREVIEW"
-                android:resource="@drawable/ic_launcher" />
+                android:resource="@drawable/tile_preview" />
+            <meta-data
+                android:name="com.google.android.clockwork.tiles.PREVIEW"
+                android:resource="@drawable/tile_preview" />
         </service>
 
     </application>
