@@ -12,9 +12,70 @@ interface DiagramSpec {
 
 const DIAGRAMS: DiagramSpec[] = [
   {
+    id: 'ssot-pipeline',
+    title: 'Single Source of Truth (SSOT) Multi-Surface Reactive Pipeline',
+    subtitle: 'A single authoritative data trigger synchronously updates all 7 presentation modalities across phone and watch with zero race conditions.',
+    badge: 'Core Architecture',
+    code: `flowchart TD
+    subgraph TriggerSources ["Authoritative Data Ingest"]
+        NetFetch["Scheduled / Manual Online Fetch (SharedMarketClient)"]
+        DataLayerRx["Wearable Data Layer (PATH_MARKET_QUOTES)"]
+        UserPref["User Portfolio Toggle (Disabled Holdings / Weights)"]
+    end
+
+    subgraph PhoneDevice ["Phone Single Source of Truth (:mobile)"]
+        PhoneRepo["MobileMarketRepository\\n(Authoritative Commit Point)"]
+        PhoneSnapshot["StateFlow<MarketSnapshot>\\n(Immutable Unified State)"]
+        PhoneHub["PhoneMarketSyncHub\\n(Reactive Coordinator)"]
+
+        PhoneRepo --> PhoneSnapshot
+        PhoneSnapshot --> PhoneHub
+    end
+
+    subgraph PhoneModalities ["Phone Presentation Modalities (Passive Observers)"]
+        PhoneUI["Phone App Dashboard\\n(MobileMarketStore MVI)"]
+        LiveNotif["Android 16 Live Activity / Lock Screen\\n(PortfolioLiveNotificationManager)"]
+        GlanceWidget["Android Glance Home Screen Widget\\n(MarketGlanceWidget)"]
+        DataLayerTx["DataClient Sync to Watch\\n(WearDataSyncManager)"]
+
+        PhoneHub -->|StateFlow| PhoneUI
+        PhoneHub -->|showOrUpdate| LiveNotif
+        PhoneHub -->|updateAll| GlanceWidget
+        PhoneHub -->|putDataItem| DataLayerTx
+    end
+
+    subgraph WatchDevice ["Watch Single Source of Truth (:app)"]
+        RoomDB[("Room Database (IndexQuoteEntity)\\n(Authoritative Commit Point)")]
+        WatchFlow["Flow<List<IndexQuote>>\\n(Room Dao Observation)"]
+        WatchHub["WatchMarketSyncHub\\n(Reactive Coordinator)"]
+
+        RoomDB --> WatchFlow
+        WatchFlow --> WatchHub
+    end
+
+    subgraph WatchModalities ["Watch Presentation Modalities (Passive Observers)"]
+        WatchUI["Wear OS App UI\\n(MarketViewModel)"]
+        WatchNotif["Ongoing Live Wrist Notification\\n(WatchLiveNotificationManager)"]
+        WatchTile["Wear OS Carousel Tile Widget\\n(MarketWearPortfolioTileService)"]
+        Complications["Watch Face Complications\\n(S&P 500, Nasdaq, Dual, Score)"]
+
+        WatchHub -->|StateFlow| WatchUI
+        WatchHub -->|showOrUpdate| WatchNotif
+        WatchHub -->|requestUpdate| WatchTile
+        WatchHub -->|triggerComplications| Complications
+    end
+
+    NetFetch --> PhoneRepo
+    DataLayerRx --> PhoneRepo
+    UserPref --> PhoneRepo
+
+    NetFetch --> RoomDB
+    DataLayerTx -->|Wearable Data Layer| RoomDB`,
+  },
+  {
     id: 'system-overview',
     title: 'End-to-End Battery-Optimized System Architecture',
-    subtitle: 'Market-hours sync gating, concurrent Ktor fetching, non-urgent Data Layer coalescing, and offline Room complications.',
+    subtitle: 'Market-hours sync gating, concurrent Ktor fetching, reactive sync hubs, and offline Room complications.',
     badge: 'Battery & Sync',
     code: `flowchart TD
     subgraph Cloud ["External Services"]
@@ -24,18 +85,22 @@ const DIAGRAMS: DiagramSpec[] = [
     subgraph PhoneDevice ["Android Mobile Companion (:mobile · mobileModule)"]
         PhoneUI["MobileDashboardScreen (Uses :shared-ui MarketDashboardBody)"]
         SharedClient["KMP SharedMarketClient (Mutex Coalescing, Semaphore(6), 5m/6h Cache, 2h Portfolio Throttle)"]
-        PhoneRepo["MobileMarketRepository (Koin Singleton)"]
+        PhoneRepo["MobileMarketRepository (Koin Singleton · SSOT)"]
+        PhoneHub["PhoneMarketSyncHub (Reactive Coordinator)"]
         WorkMgr["MobileSyncWorker (30m + Off-Hours 6h Gate)"]
         GlanceWidget["Jetpack Glance AppWidget (KoinComponent)"]
+        LiveNotifMgr["PortfolioLiveNotificationManager (Live Activity)"]
         WearSyncMgr["WearDataSyncManager (Non-Urgent DataClient)"]
 
         WorkMgr -->|isUsMarketWindowActive?| SharedClient
         PhoneUI -->|Manual forceRefresh| SharedClient
         SharedClient -->|Bounded Fetch| YF
         SharedClient -->|Quotes + 100-Baseline Score| PhoneRepo
-        PhoneRepo --> PhoneUI
-        PhoneRepo -->|Update State| GlanceWidget
-        PhoneRepo -->|Coalesced Payload| WearSyncMgr
+        PhoneRepo -->|snapshotFlow| PhoneHub
+        PhoneHub --> PhoneUI
+        PhoneHub -->|showOrUpdate| LiveNotifMgr
+        PhoneHub -->|updateAll| GlanceWidget
+        PhoneHub -->|Coalesced Payload| WearSyncMgr
     end
 
     subgraph WearableLayer ["Google Play Services Wearable Data Layer"]
@@ -45,22 +110,30 @@ const DIAGRAMS: DiagramSpec[] = [
 
     subgraph WatchDevice ["Wear OS Watch (:app · wearModule)"]
         ListenerSvc["MarketWearableListenerService (WakeLock)"]
-        RoomDB[("Room Database (IndexQuoteEntity)")]
+        RoomDB[("Room Database (IndexQuoteEntity · SSOT)")]
+        WatchHub["WatchMarketSyncHub (Reactive Coordinator)"]
         WatchRepo["MarketRepository (Koin + SharedMarketClient)"]
         WatchWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
         WatchVM["MarketViewModel (koinViewModel)"]
         WatchUI["Wear Compose (ScalingLazyColumn + Rotary)"]
+        WatchTileSvc["MarketWearPortfolioTileService (Carousel Tile)"]
+        WatchLiveNotif["WatchLiveNotificationManager (Ongoing Notification)"]
         ComplicationSvc["Complication Services (Offline Room, 3600s Period)"]
 
         WatchUI -->|Crown / Tap Refresh| WatchRepo
         WatchWorker -->|Skip if Fresh| RoomDB
         WatchWorker -->|Refresh if Stale| WatchRepo
         WatchRepo -->|Delegate Fetch| MsgClientReq
+        WatchRepo -->|syncQuotesToPhone| DataClientMsg
         DataClientMsg -->|Receive OnDataChanged| ListenerSvc
         ListenerSvc -->|Upsert Payload| RoomDB
-        RoomDB -->|Flow Observation| WatchRepo
+        RoomDB -->|quotesFlow| WatchHub
+        WatchHub --> WatchRepo
         WatchRepo --> WatchVM
         WatchVM --> WatchUI
+        WatchHub -->|requestUpdate| WatchTileSvc
+        WatchHub -->|showOrUpdate| WatchLiveNotif
+        WatchHub -->|triggerComplications| ComplicationSvc
         RoomDB -->|Zero-Network Dial Read| ComplicationSvc
     end
 
