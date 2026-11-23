@@ -317,6 +317,12 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             )
 
         if (expansionMode == NotificationExpansionMode.EXPANDED) {
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(bodyText)
+                    .setBigContentTitle(titleText)
+                    .setSummaryText(spec.subText)
+            )
             builder.addAction(
                 NotificationCompat.Action.Builder(
                     arrowIconRes,

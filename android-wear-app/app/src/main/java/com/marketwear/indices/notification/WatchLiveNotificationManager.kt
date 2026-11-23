@@ -269,9 +269,9 @@ class WatchLiveNotificationManager(private val context: Context) {
         val canvas = Canvas(bitmap)
 
         val isGain = cardState.trendDirection == TrendDirection.POSITIVE
-        val accentColor = if (isGain) 0xFF00E676.toInt() else 0xFFFF5252.toInt()
-        val accentGlowColor = if (isGain) 0x3800E676 else 0x38FF5252
-        val pillBgColor = if (isGain) 0x2400E676 else 0x24FF5252
+        val accentColor = if (isGain) 0xFF00E676.toInt() else 0xFFFF3B30.toInt()
+        val accentGlowColor = if (isGain) 0x3800E676 else 0x38FF3B30
+        val pillBgColor = if (isGain) 0x2400E676 else 0x24FF3B30
 
         // 1. Obsidian Card Background & Border
         val cardRect = RectF(2f, 2f, width - 2f, height - 2f)
@@ -281,8 +281,8 @@ class WatchLiveNotificationManager(private val context: Context) {
                 0f,
                 0f,
                 height.toFloat(),
-                0xFF111824.toInt(),
-                0xFF0B0F17.toInt(),
+                0xFF0C111A.toInt(),
+                0xFF06090E.toInt(),
                 Shader.TileMode.CLAMP
             )
             style = Paint.Style.FILL
@@ -290,7 +290,7 @@ class WatchLiveNotificationManager(private val context: Context) {
         canvas.drawRoundRect(cardRect, 28f, 28f, bgPaint)
 
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF233044.toInt()
+            color = 0xFF1F2B3E.toInt()
             style = Paint.Style.STROKE
             strokeWidth = 2f
         }
@@ -305,9 +305,9 @@ class WatchLiveNotificationManager(private val context: Context) {
             style = Paint.Style.FILL
         }
         val modeLabel = if (cardState.weightMode == PortfolioWeightMode.NORMALIZED_100) {
-            "100% NORMALIZED"
+            "100% Normalized"
         } else {
-            "RAW WEIGHT"
+            "Raw Portfolio"
         }
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
@@ -522,17 +522,17 @@ class WatchLiveNotificationManager(private val context: Context) {
 
         val accentColor = when (cardState.trendDirection) {
             TrendDirection.POSITIVE -> 0xFF00E676.toInt()
-            TrendDirection.NEGATIVE -> 0xFFFF5252.toInt()
+            TrendDirection.NEGATIVE -> 0xFFFF3B30.toInt()
         }
 
         val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF101622.toInt()
+            color = 0xFF0C111A.toInt()
             style = Paint.Style.FILL
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - 2f, bgPaint)
 
         val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF263248.toInt()
+            color = 0xFF1F2B3E.toInt()
             style = Paint.Style.STROKE
             strokeWidth = 3f
         }

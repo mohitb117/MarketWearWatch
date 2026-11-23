@@ -54,15 +54,15 @@ class PortfolioScoreComplicationService : SuspendingComplicationDataSourceServic
                 text = PlainComplicationText.Builder(scoreText).build(),
                 contentDescription = contentDesc
             )
-                .setTitle(PlainComplicationText.Builder("PF $deltaText").build())
+                .setTitle(PlainComplicationText.Builder(deltaText).build())
                 .setTapAction(pendingIntent)
                 .build()
 
             ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(
-                text = PlainComplicationText.Builder("Portfolio $scoreText ($deltaText)").build(),
+                text = PlainComplicationText.Builder("Portfolio $scoreText").build(),
                 contentDescription = contentDesc
             )
-                .setTitle(PlainComplicationText.Builder("37 Holdings Score").build())
+                .setTitle(PlainComplicationText.Builder(deltaText).build())
                 .setTapAction(pendingIntent)
                 .build()
 

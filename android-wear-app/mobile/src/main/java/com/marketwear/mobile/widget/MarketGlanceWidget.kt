@@ -77,18 +77,18 @@ private enum class WidgetSizeTier {
 }
 
 private object WidgetObsidianTokens {
-    val Background = Color(0xFF070B11)
-    val Surface = Color(0xFF0E1520)
-    val SurfaceElevated = Color(0xFF151F2E)
+    val Background = Color(0xFF06090E)
+    val Surface = Color(0xFF0C111A)
+    val SurfaceElevated = Color(0xFF131A26)
     val Primary = Color(0xFF38BDF8)
-    val PrimaryContainer = Color(0xFF10324A)
+    val PrimaryContainer = Color(0xFF0E3047)
     val OnPrimaryContainer = Color(0xFFBAE6FD)
     val OnSurface = Color(0xFFF1F5F9)
-    val OnSurfaceVariant = Color(0xFF94A3B8)
-    val Positive = Color(0xFF34D399)
-    val PositiveContainer = Color(0xFF0B2E24)
-    val Negative = Color(0xFFFB7185)
-    val NegativeContainer = Color(0xFF38131E)
+    val OnSurfaceVariant = Color(0xFF8B9BB4)
+    val Positive = Color(0xFF00E676)
+    val PositiveContainer = Color(0xFF062A1B)
+    val Negative = Color(0xFFFF3B30)
+    val NegativeContainer = Color(0xFF2B0C11)
 }
 
 class MarketGlanceWidget : GlanceAppWidget(), KoinComponent {
@@ -185,23 +185,23 @@ private fun Compact2x2WidgetView(
     Column(
         modifier = GlanceModifier.fillMaxSize()
     ) {
-        // Row 1: PORT + Holdings count on left, weight mode pill on right
+        // Row 1: Brand / Title + Holdings count on left, weight mode pill on right
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "PORT",
+                text = "Portfolio",
                 style = TextStyle(
-                    color = ColorProvider(WidgetObsidianTokens.Primary),
-                    fontSize = 10.sp,
+                    color = ColorProvider(WidgetObsidianTokens.OnSurface),
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 1
             )
             Spacer(modifier = GlanceModifier.width(4.dp))
             Text(
-                text = "${portfolio.enabledHoldingsCount}/${portfolio.totalHoldingsCount}",
+                text = "· ${portfolio.enabledHoldingsCount}/${portfolio.totalHoldingsCount}",
                 style = TextStyle(
                     color = ColorProvider(WidgetObsidianTokens.OnSurfaceVariant),
                     fontSize = 10.sp
@@ -211,16 +211,16 @@ private fun Compact2x2WidgetView(
             Spacer(modifier = GlanceModifier.defaultWeight())
             Box(
                 modifier = GlanceModifier
-                    .background(WidgetObsidianTokens.PrimaryContainer)
+                    .background(WidgetObsidianTokens.SurfaceElevated)
                     .cornerRadius(8.dp)
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = shortModeBadge,
                     style = TextStyle(
-                        color = ColorProvider(WidgetObsidianTokens.OnPrimaryContainer),
+                        color = ColorProvider(WidgetObsidianTokens.OnSurfaceVariant),
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
                 )
@@ -384,10 +384,10 @@ private fun PortfolioHeroGlanceCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Portfolio Daily Score · ${portfolio.enabledHoldingsCount}/${portfolio.totalHoldingsCount}",
+                text = "Portfolio · ${portfolio.enabledHoldingsCount}/${portfolio.totalHoldingsCount} Holdings",
                 style = TextStyle(
                     color = ColorProvider(WidgetObsidianTokens.OnSurfaceVariant),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 1
@@ -395,16 +395,16 @@ private fun PortfolioHeroGlanceCard(
             Spacer(modifier = GlanceModifier.defaultWeight())
             Box(
                 modifier = GlanceModifier
-                    .background(WidgetObsidianTokens.PrimaryContainer)
+                    .background(WidgetObsidianTokens.SurfaceElevated)
                     .cornerRadius(8.dp)
                     .padding(horizontal = 7.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = portfolio.mobileModePillLabel,
                     style = TextStyle(
-                        color = ColorProvider(WidgetObsidianTokens.OnPrimaryContainer),
+                        color = ColorProvider(WidgetObsidianTokens.OnSurfaceVariant),
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
                 )

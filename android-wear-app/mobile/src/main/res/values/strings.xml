@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">MarketWear Mobile</string>
-    <string name="widget_name">Market Indices</string>
-    <string name="widget_description">Glanceable S&amp;P 500 and Nasdaq 100 market indices</string>
+    <string name="widget_name">MarketWear Portfolio</string>
+    <string name="widget_description">Real-time daily portfolio score, intraday momentum chart, and major US indices</string>
 </resources>
