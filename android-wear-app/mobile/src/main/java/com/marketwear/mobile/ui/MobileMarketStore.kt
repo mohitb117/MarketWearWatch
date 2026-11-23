@@ -51,6 +51,7 @@ class MobileMarketStoreFactory(
 ) {
     private sealed interface Action {
         data class InitialRefresh(val policy: RefreshPolicy) : Action
+        data class ExternalQuotesUpdated(val quotes: List<IndexQuote>) : Action
         data class ExternalPortfolioConfigChanged(
             val disabledHoldingIds: Set<String>,
             val customWeights: Map<String, Double>
@@ -119,6 +120,13 @@ class MobileMarketStoreFactory(
         override fun invoke() {
             dispatch(Action.InitialRefresh(RefreshPolicy.CACHE_FIRST))
             scope.launch {
+                repository.snapshotFlow.drop(1).collect { snapshot ->
+                    if (snapshot.quotes.isNotEmpty()) {
+                        dispatch(Action.ExternalQuotesUpdated(snapshot.quotes))
+                    }
+                }
+            }
+            scope.launch {
                 combine(
                     selectionStore.disabledHoldingIds,
                     selectionStore.customWeights
@@ -149,6 +157,14 @@ class MobileMarketStoreFactory(
         override fun executeAction(action: Action) {
             when (action) {
                 is Action.InitialRefresh -> handleRefresh(action.policy)
+                is Action.ExternalQuotesUpdated -> {
+                    val current = state()
+                    val deliveryState = liveNotificationManager.resolveDeliveryState(current.liveNotificationPreference)
+                    dispatchUpdatedCore(
+                        quotes = action.quotes,
+                        deliveryState = deliveryState
+                    )
+                }
                 is Action.ExternalPortfolioConfigChanged -> {
                     val recomputed = repository.recomputePortfolioForSelection(
                         disabledHoldingIds = action.disabledHoldingIds,

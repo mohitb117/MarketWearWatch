@@ -5,6 +5,7 @@ import com.marketwear.mobile.data.KtorMarketClient
 import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.data.PortfolioSelectionStore
 import com.marketwear.mobile.notification.PortfolioLiveNotificationManager
+import com.marketwear.mobile.sync.PhoneMarketSyncHub
 import com.marketwear.mobile.sync.WearDataSyncManager
 import com.marketwear.mobile.ui.MobileViewModel
 import org.koin.android.ext.koin.androidApplication
@@ -14,10 +15,11 @@ import org.koin.dsl.module
 
 val mobileModule = module {
     single { KtorMarketClient(client = get()) }
-    single { MobileMarketRepository(client = get()) }
     single { PortfolioSelectionStore(androidContext()) }
+    single { MobileMarketRepository(client = get(), selectionStore = get()) }
     single { PortfolioLiveNotificationManager(androidContext()) }
     single { WearDataSyncManager(androidContext()) }
+    single { PhoneMarketSyncHub(context = androidContext(), repository = get(), selectionStore = get(), liveNotificationManager = get(), syncManager = get()) }
     single { MarketAppFunctions(repository = get(), syncManager = get()) }
     viewModel {
         MobileViewModel(
