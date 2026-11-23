@@ -133,15 +133,36 @@ class MarketRepository(
         if (fetchedQuotes.isNotEmpty()) {
             val entities = fetchedQuotes.map { IndexQuoteEntity.fromDomainModel(it) }
             dao.insertOrUpdate(entities)
-            MarketSyncWorker.triggerComplicationUpdates(context)
+            syncQuotesToPhone(fetchedQuotes, intradayCache)
         }
 
         dao.getAllQuotes().map { it.toDomainModel() }
     }
 
+    suspend fun syncQuotesToPhone(
+        quotes: List<IndexQuote>,
+        intradayData: Map<String, com.marketwear.shared.model.TickerIntradayData> = emptyMap()
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val putDataMapReq = PutDataMapRequest.create(WearConstants.PATH_MARKET_QUOTES)
+            val dataMap = putDataMapReq.dataMap
+            dataMap.putString(WearConstants.KEY_QUOTES_PAYLOAD, json.encodeToString(quotes))
+            dataMap.putLong(WearConstants.KEY_SYNC_TIMESTAMP, System.currentTimeMillis())
+            if (intradayData.isNotEmpty()) {
+                dataMap.putString(
+                    WearConstants.KEY_PORTFOLIO_INTRADAY_PAYLOAD,
+                    json.encodeToString(intradayData)
+                )
+            }
+            val putRequest = putDataMapReq.asPutDataRequest().setUrgent()
+            dataClient.putDataItem(putRequest).await()
+        } catch (_: Exception) {
+            // Local data remains authoritative on Watch if phone disconnected
+        }
+    }
+
     suspend fun persistRecomputedPortfolioQuote(quote: IndexQuote) = withContext(Dispatchers.IO) {
         dao.insertOrUpdate(IndexQuoteEntity.fromDomainModel(quote))
-        MarketSyncWorker.triggerComplicationUpdates(context)
     }
 
     suspend fun syncDisabledHoldingsToPhone(

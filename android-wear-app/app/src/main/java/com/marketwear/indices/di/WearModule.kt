@@ -4,6 +4,7 @@ import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.notification.WatchLiveNotificationManager
+import com.marketwear.indices.sync.WatchMarketSyncHub
 import com.marketwear.indices.ui.MarketViewModel
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -21,6 +22,14 @@ val wearModule = module {
             dao = get(),
             sharedClient = get(),
             selectionStore = get()
+        )
+    }
+    single {
+        WatchMarketSyncHub(
+            context = androidContext(),
+            repository = get(),
+            selectionStore = get(),
+            liveNotificationManager = get()
         )
     }
     viewModel {

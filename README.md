@@ -8,15 +8,88 @@
 [![Jetpack Compose](https://img.shields.io/badge/Compose-Wear%20%26%20Mobile-green.svg)](https://developer.android.com/jetpack/compose)
 [![Glance Widget](https://img.shields.io/badge/Jetpack%20Glance-1.1.0-brightgreen.svg)](https://developer.android.com/jetpack/compose/glance)
 [![Play Services](https://img.shields.io/badge/Wearable%20Data%20Layer-18.2.0-orange.svg)](https://developers.google.com/android/reference/com/google/android/gms/wearable/package-summary)
+[![Architecture: SSOT](https://img.shields.io/badge/Architecture-Single%20Source%20of%20Truth-success.svg)](#single-source-of-truth-ssot-architecture)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **MarketWear** is a multi-device financial tracking ecosystem built with **Kotlin Multiplatform (KMP)**, **Compose Multiplatform (`:shared-ui`)**, **Koin 4.0.0 DI**, **Vico 3.3.1**, **Google Pixel Watch (Wear OS)**, **Android Mobile (Companion, Glance Widget & Gemini AppFunctions)**, **KMP JVM Desktop (`:desktop`)**, plus **iOS (`ComposeUIViewController`)** and **Web (`ComposeViewport`)** targets. It delivers a 100-baseline **Daily Portfolio Score** across 37 UBS & Fidelity holdings (`100% Normalized` and `59.41% Raw`), **S&P 500**, **Nasdaq 100**, and all **11 GICS US Market Sectors** with Dark Mode default theming, request coalescing, and battery-aware background synchronization.
+
+At the core of the architecture is a **Single Source of Truth (SSOT)** reactive pipeline that guarantees every surface—Phone Dashboard, Android 16 Live Activity / Lock Screen chip, Android Glance Home Screen Widget, Wear OS App, Carousel Tile, Live Wrist Notification, and Complications—synchronously updates from an authoritative data trigger with zero race conditions.
 
 👉 **[Try the Interactive Web Showcase & Simulator](https://mohitb117.github.io/MarketWearWatch/)** directly in your browser.
 
 ---
 
-## Architecture Overview
+## Single Source of Truth (SSOT) Architecture
+
+MarketWear eliminates "helter-skelter" cross-component event passing. No individual UI surface or background receiver is permitted to imperatively poke sibling modalities. Instead, each device maintains an authoritative local repository that emits an immutable `MarketSnapshot` / Room `quotesFlow`, observed by a dedicated reactive sync hub that broadcasts updates simultaneously across all modalities.
+
+```mermaid
+flowchart TD
+    subgraph TriggerSources ["Authoritative Data Ingest"]
+        NetFetch["Scheduled / Manual Online Fetch (SharedMarketClient)"]
+        DataLayerRx["Wearable Data Layer (PATH_MARKET_QUOTES)"]
+        UserPref["User Portfolio Toggle (Disabled Holdings / Weights)"]
+    end
+
+    subgraph PhoneDevice ["Phone Single Source of Truth (:mobile)"]
+        PhoneRepo["MobileMarketRepository\n(Authoritative Commit Point)"]
+        PhoneSnapshot["StateFlow<MarketSnapshot>\n(Immutable Unified State)"]
+        PhoneHub["PhoneMarketSyncHub\n(Reactive Coordinator)"]
+
+        PhoneRepo --> PhoneSnapshot
+        PhoneSnapshot --> PhoneHub
+    end
+
+    subgraph PhoneModalities ["Phone Presentation Modalities (Passive Observers)"]
+        PhoneUI["Phone App Dashboard\n(MobileMarketStore MVI)"]
+        LiveNotif["Android 16 Live Activity / Lock Screen\n(PortfolioLiveNotificationManager)"]
+        GlanceWidget["Android Glance Home Screen Widget\n(MarketGlanceWidget)"]
+        DataLayerTx["DataClient Sync to Watch\n(WearDataSyncManager)"]
+
+        PhoneHub -->|StateFlow| PhoneUI
+        PhoneHub -->|showOrUpdate| LiveNotif
+        PhoneHub -->|updateAll| GlanceWidget
+        PhoneHub -->|putDataItem| DataLayerTx
+    end
+
+    subgraph WatchDevice ["Watch Single Source of Truth (:app)"]
+        RoomDB[("Room Database (IndexQuoteEntity)\n(Authoritative Commit Point)")]
+        WatchFlow["Flow<List<IndexQuote>>\n(Room Dao Observation)"]
+        WatchHub["WatchMarketSyncHub\n(Reactive Coordinator)"]
+
+        RoomDB --> WatchFlow
+        WatchFlow --> WatchHub
+    end
+
+    subgraph WatchModalities ["Watch Presentation Modalities (Passive Observers)"]
+        WatchUI["Wear OS App UI\n(MarketViewModel)"]
+        WatchNotif["Ongoing Live Wrist Notification\n(WatchLiveNotificationManager)"]
+        WatchTile["Wear OS Carousel Tile Widget\n(MarketWearPortfolioTileService)"]
+        Complications["Watch Face Complications\n(S&P 500, Nasdaq, Dual, Score)"]
+
+        WatchHub -->|StateFlow| WatchUI
+        WatchHub -->|showOrUpdate| WatchNotif
+        WatchHub -->|requestUpdate| WatchTile
+        WatchHub -->|triggerComplications| Complications
+    end
+
+    NetFetch --> PhoneRepo
+    DataLayerRx --> PhoneRepo
+    UserPref --> PhoneRepo
+
+    NetFetch --> RoomDB
+    DataLayerTx -->|Wearable Data Layer| RoomDB
+```
+
+### Architectural Guarantees:
+1. **Passive Observation Only**: Presentation surfaces (`MobileDashboardScreen`, `MarketWearScreen`, `MarketGlanceWidget`, `MarketWearPortfolioTileService`, `WatchLiveNotificationManager`, and Complications) never trigger network fetches or imperative cross-updates directly; they passively subscribe to the local SSOT.
+2. **Atomic Ingest**: Network workers and DataLayer listeners act as pure ingest channels into `MobileMarketRepository` (Phone) or `RoomDatabase` (Watch).
+3. **Synchronous Multi-Surface Broadcast**: A single data arrival instantaneously updates all 7 presentation surfaces in parallel.
+4. **Bidirectional Sync with Deduplication**: When either device fetches online, fresh quotes are pushed across the Wearable Data Layer (`WearConstants.PATH_MARKET_QUOTES`). Equality checks prevent echo loops and redundant Bluetooth transmissions.
+
+---
+
+## End-to-End System Architecture
 
 MarketWear employs a clean, 5-module KMP architecture (`:shared`, `:shared-ui`, `:mobile`, `:app`, and `:desktop`), sharing domain models, enum state machines, network coalescing/caching, Dark Mode design tokens, and Compose Multiplatform UI components across all targets.
 
@@ -29,18 +102,22 @@ flowchart TD
     subgraph PhoneDevice ["Android Mobile Companion (:mobile · mobileModule)"]
         PhoneUI["MobileDashboardScreen (:shared-ui MarketDashboardBody)"]
         SharedClient["KMP SharedMarketClient (Mutex Coalescing, Semaphore(6), 5m/6h Cache, 2h Portfolio Throttle)"]
-        PhoneRepo["MobileMarketRepository (Koin Singleton)"]
+        PhoneRepo["MobileMarketRepository (Koin Singleton · SSOT)"]
+        PhoneHub["PhoneMarketSyncHub (Reactive Coordinator)"]
         WorkMgr["MobileSyncWorker (30m + Off-Hours 6h Gate)"]
         GlanceWidget["Jetpack Glance AppWidget (KoinComponent)"]
+        LiveNotifMgr["PortfolioLiveNotificationManager (Live Activity)"]
         WearSyncMgr["WearDataSyncManager (Non-Urgent DataClient)"]
 
         WorkMgr -->|isUsMarketWindowActive?| SharedClient
         PhoneUI -->|Manual forceRefresh| SharedClient
         SharedClient -->|Bounded Fetch| YF
         SharedClient -->|Quotes + 100-Baseline Score| PhoneRepo
-        PhoneRepo --> PhoneUI
-        PhoneRepo -->|Update State| GlanceWidget
-        PhoneRepo -->|Coalesced Payload| WearSyncMgr
+        PhoneRepo -->|snapshotFlow| PhoneHub
+        PhoneHub --> PhoneUI
+        PhoneHub -->|showOrUpdate| LiveNotifMgr
+        PhoneHub -->|updateAll| GlanceWidget
+        PhoneHub -->|Coalesced Payload| WearSyncMgr
     end
 
     subgraph WearableLayer ["Google Play Services Wearable Data Layer"]
@@ -50,22 +127,30 @@ flowchart TD
 
     subgraph WatchDevice ["Wear OS Watch (:app · wearModule)"]
         ListenerSvc["MarketWearableListenerService (WakeLock)"]
-        RoomDB[("Room Database (IndexQuoteEntity)")]
+        RoomDB[("Room Database (IndexQuoteEntity · SSOT)")]
+        WatchHub["WatchMarketSyncHub (Reactive Coordinator)"]
         WatchRepo["MarketRepository (Koin + SharedMarketClient)"]
         WatchWorker["MarketSyncWorker (45m / 6h Freshness Guard)"]
         WatchVM["MarketViewModel (koinViewModel)"]
         WatchUI["Wear Compose (ScalingLazyColumn + PortfolioScoreWatchCard Vico 3.3.1)"]
+        WatchTileSvc["MarketWearPortfolioTileService (Carousel Tile Widget)"]
+        WatchLiveNotif["WatchLiveNotificationManager (Ongoing Notification)"]
         ComplicationSvc["Complication Services (Offline Room, 3600s Period)"]
 
         WatchUI -->|Crown / Tap Refresh| WatchRepo
         WatchWorker -->|Skip if Fresh| RoomDB
         WatchWorker -->|Refresh if Stale| WatchRepo
         WatchRepo -->|Delegate Fetch| MsgClientReq
+        WatchRepo -->|syncQuotesToPhone| DataClientMsg
         DataClientMsg -->|Receive OnDataChanged| ListenerSvc
         ListenerSvc -->|Upsert Payload| RoomDB
-        RoomDB -->|Flow Observation| WatchRepo
+        RoomDB -->|quotesFlow| WatchHub
+        WatchHub --> WatchRepo
         WatchRepo --> WatchVM
         WatchVM --> WatchUI
+        WatchHub -->|requestUpdate| WatchTileSvc
+        WatchHub -->|showOrUpdate| WatchLiveNotif
+        WatchHub -->|triggerComplications| ComplicationSvc
         RoomDB -->|Zero-Network Dial Read| ComplicationSvc
     end
 

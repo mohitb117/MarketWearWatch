@@ -1,5 +1,6 @@
 package com.marketwear.indices.service
 
+import androidx.wear.tiles.TileService
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.DataMap
@@ -11,6 +12,7 @@ import com.marketwear.indices.data.db.IndexQuoteEntity
 import com.marketwear.indices.data.db.MarketDatabase
 import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.indices.sync.MarketSyncWorker
+import com.marketwear.indices.tile.MarketWearPortfolioTileService
 import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.model.TickerIntradayData
@@ -91,6 +93,11 @@ class MarketWearableListenerService : WearableListenerService(), KoinComponent {
                     customWeights = selectionStore.customWeights.value
                 )
                 MarketSyncWorker.triggerComplicationUpdates(applicationContext)
+                try {
+                    TileService.getUpdater(applicationContext).requestUpdate(MarketWearPortfolioTileService::class.java)
+                } catch (_: Exception) {
+                    // Ignored
+                }
             }
         }
     }
