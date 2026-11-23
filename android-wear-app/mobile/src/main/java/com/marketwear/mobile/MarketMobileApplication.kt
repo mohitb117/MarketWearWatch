@@ -3,7 +3,9 @@ package com.marketwear.mobile
 import android.app.Application
 import com.marketwear.mobile.di.mobileModule
 import com.marketwear.mobile.sync.MobileSyncWorker
+import com.marketwear.mobile.sync.PhoneMarketSyncHub
 import com.marketwear.shared.di.initKoin
+import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 
 class MarketMobileApplication : Application() {
@@ -13,6 +15,9 @@ class MarketMobileApplication : Application() {
         initKoin(extraModules = listOf(mobileModule)) {
             androidContext(this@MarketMobileApplication)
         }
+        // Initialize reactive Single Source of Truth sync hub
+        get<PhoneMarketSyncHub>()
+
         // Automatically schedule 30-minute background sync to watch
         MobileSyncWorker.schedulePeriodicSync(this)
     }
