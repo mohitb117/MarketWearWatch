@@ -37,6 +37,7 @@ final class MarketWearMacViewModel: ObservableObject {
     @Published var islandMode: IslandSurfaceMode = .collapsedNotch
     @Published var pinState: IslandPinState = .autoHover
     @Published var notchMetrics: NotchMetrics = .detect()
+    @Published private(set) var isSyncing: Bool = false
 
     private var timerCancellable: AnyCancellable?
     private let baseURL = URL(string: "http://127.0.0.1:49172")!
@@ -59,9 +60,12 @@ final class MarketWearMacViewModel: ObservableObject {
 
     func sendIntent(_ action: IslandActionCode) {
         Task {
+            if action == .refreshLive {
+                isSyncing = true
+            }
             let url = baseURL.appending(path: "intent").appending(queryItems: [URLQueryItem(name: "code", value: action.rawValue)])
             var req = URLRequest(url: url)
-            req.timeoutInterval = 1.0
+            req.timeoutInterval = 10.0
             if let (data, _) = try? await URLSession.shared.data(for: req),
                let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
                 dashboard = decoded
@@ -70,12 +74,15 @@ final class MarketWearMacViewModel: ObservableObject {
                 dashboard = KmpDashboardState.loadLatestOrFallback()
                 connectionStatus = .localCache
             }
+            if action == .refreshLive {
+                isSyncing = false
+            }
         }
     }
 
     private func pollLatestState() async {
         var req = URLRequest(url: baseURL.appending(path: "state"))
-        req.timeoutInterval = 0.6
+        req.timeoutInterval = 3.0
         if let (data, _) = try? await URLSession.shared.data(for: req),
            let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
             dashboard = decoded
@@ -333,7 +340,7 @@ struct DynamicIslandDeskView: View {
                 intentChip("Bear", .scenarioBear)
                 intentChip("Reset %", .resetWeights)
                 Spacer()
-                intentChip("Sync", .refreshLive, emphasis: .primary)
+                intentChip(vm.isSyncing ? "Syncing..." : "Sync", .refreshLive, emphasis: .primary)
             }
         }
     }
