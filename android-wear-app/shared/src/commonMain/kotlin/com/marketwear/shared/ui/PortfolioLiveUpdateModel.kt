@@ -221,9 +221,9 @@ object PortfolioLiveUpdateFormatter {
         val subText = "$modeBadgeLabel · $enabledHoldingsCount/$totalHoldingsCount"
         val collapsedTitle = "Portfolio ${activeQuote.formattedScore} · $arrowGlyph $shortCriticalText"
         val collapsedSubtitle = if (secondarySummaryLine.isNotBlank()) {
-            "$secondarySummaryLine · 50% = 100.0"
+            "$secondarySummaryLine · Range $rangeText"
         } else {
-            "$enabledHoldingsCount/$totalHoldingsCount holdings · 50% = 100.0"
+            "$enabledHoldingsCount/$totalHoldingsCount holdings · Range $rangeText"
         }
         val expandedTitle = "Portfolio Daily Score · ${activeQuote.formattedScore} (${activeQuote.formattedPercent})"
         val expandedSubtitle = buildString {
@@ -234,7 +234,7 @@ object PortfolioLiveUpdateFormatter {
             append("Range ")
             append(rangeText)
             append(" · ")
-            append("$enabledHoldingsCount/$totalHoldingsCount active · Center 100.0 (±1% / ±5% / ±25%)")
+            append("$enabledHoldingsCount/$totalHoldingsCount active")
         }
 
         return PortfolioLiveUpdateSpec(

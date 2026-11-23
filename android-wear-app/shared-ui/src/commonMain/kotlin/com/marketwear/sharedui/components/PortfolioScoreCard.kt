@@ -156,10 +156,10 @@ fun PortfolioScoreCard(
                     Row(
                         modifier = Modifier
                             .clip(MarketWearShapes.TogglePill)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
                             .border(
                                 width = 1.dp,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
                                 shape = MarketWearShapes.TogglePill
                             )
                             .clickable { onIntent(MarketIntent.ToggleWeightMode) }
@@ -167,10 +167,10 @@ fun PortfolioScoreCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "⇄ ${state.mobileModePillLabel}",
+                            text = state.mobileModePillLabel,
                             fontSize = MarketWearTextSizes.ModePill,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             softWrap = false
                         )
@@ -314,10 +314,10 @@ private fun HoldingsConfigurePill(
     Row(
         modifier = Modifier
             .clip(MarketWearShapes.TogglePill)
-            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
                 shape = MarketWearShapes.TogglePill
             )
             .clickable(onClick = onClick)
@@ -325,10 +325,10 @@ private fun HoldingsConfigurePill(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Configure ($enabledCount/$totalCount)",
+            text = "Holdings ($enabledCount/$totalCount)",
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             softWrap = false
         )

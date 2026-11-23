@@ -1,10 +1,12 @@
 package com.marketwear.sharedui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,15 +15,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -225,9 +233,10 @@ fun LiveUpdateNotificationPreviewCard(
     spec: PortfolioLiveUpdateSpec,
     onIntent: (MarketIntent) -> Unit = {},
     modifier: Modifier = Modifier,
-    initialMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED,
+    initialMode: NotificationExpansionMode = NotificationExpansionMode.COLLAPSED,
     selectedMode: NotificationExpansionMode? = null,
-    onSelectMode: ((NotificationExpansionMode) -> Unit)? = null
+    onSelectMode: ((NotificationExpansionMode) -> Unit)? = null,
+    initialExpanded: Boolean = false
 ) {
     var localMode by remember { mutableStateOf(initialMode) }
     val mode = selectedMode ?: localMode
@@ -235,6 +244,7 @@ fun LiveUpdateNotificationPreviewCard(
         localMode = next
         onSelectMode?.invoke(next)
     }
+    var isPreviewExpanded by rememberSaveable { mutableStateOf(initialExpanded) }
     val accentColor = Color(spec.accentArgb)
     val arrowGlyph = when (spec.momentumBand) {
         PortfolioMomentumBand.FLAT -> "→"
@@ -253,7 +263,7 @@ fun LiveUpdateNotificationPreviewCard(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Top bar: Simulated Status Bar Mini Chip (9:30 [ ↗ +0.84% ]) + Collapsed/Expanded Mode Switcher
+            // Header Row: Live Activity indicator & mini chip + Mode Switcher & Preview Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -261,26 +271,38 @@ fun LiveUpdateNotificationPreviewCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(end = 6.dp)
                 ) {
-                    Text(
-                        text = "9:30",
-                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(accentColor)
                     )
-                    // Status bar directional arrow mini chip tile
+                    Text(
+                        text = "LIVE ACTIVITY BAR",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Mini directional chip
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         modifier = Modifier
                             .clip(MarketWearShapes.TogglePill)
                             .background(accentColor)
-                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = arrowGlyph,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF06130D)
                         )
@@ -288,155 +310,218 @@ fun LiveUpdateNotificationPreviewCard(
                             text = spec.shortCriticalText,
                             style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF06130D)
+                            color = Color(0xFF06130D),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
-                    Text(
-                        text = "· ${spec.subText}",
-                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
 
-                // Collapsed / Expanded toggle pill
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    NotificationExpansionMode.entries.forEach { entry ->
-                        val isSelected = mode == entry
-                        val pillBg = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        }
-                        val pillFg = if (isSelected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                        val label = when (entry) {
-                            NotificationExpansionMode.COLLAPSED -> "Collapsed"
-                            NotificationExpansionMode.EXPANDED -> "Expanded"
-                        }
-                        Box(
+                    if (isPreviewExpanded) {
+                        // Collapsed / Expanded segmented toggle
+                        Row(
                             modifier = Modifier
                                 .clip(MarketWearShapes.TogglePill)
-                                .background(pillBg)
-                                .clickable { updateMode(entry) }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .padding(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            NotificationExpansionMode.entries.forEach { entry ->
+                                val isSelected = mode == entry
+                                val pillBg = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    Color.Transparent
+                                }
+                                val pillFg = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                val label = when (entry) {
+                                    NotificationExpansionMode.COLLAPSED -> "Collapsed"
+                                    NotificationExpansionMode.EXPANDED -> "Expanded"
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(MarketWearShapes.TogglePill)
+                                        .background(pillBg)
+                                        .clickable { updateMode(entry) }
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = pillFg,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Preview Toggle Button
+                    Box(
+                        modifier = Modifier
+                            .clip(MarketWearShapes.TogglePill)
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .clickable { isPreviewExpanded = !isPreviewExpanded }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Text(
-                                text = label,
+                                text = if (isPreviewExpanded) "Hide" else "Preview",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                            Text(
+                                text = if (isPreviewExpanded) "⌃" else "⌄",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = pillFg
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            AnimatedVisibility(visible = isPreviewExpanded) {
+                Column {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            // Simulated lock-screen notification top bar
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.weight(1f, fill = false)
+                                ) {
+                                    Text(
+                                        text = "9:30",
+                                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "· MarketWear",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Text(
+                                        text = "· ${spec.subText}",
+                                        style = MaterialTheme.typography.labelSmall.merge(MarketWearTextStyles.Tabular),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = if (mode == NotificationExpansionMode.EXPANDED) "⌃" else "⌄",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        val next = if (mode == NotificationExpansionMode.EXPANDED) {
+                                            NotificationExpansionMode.COLLAPSED
+                                        } else {
+                                            NotificationExpansionMode.EXPANDED
+                                        }
+                                        updateMode(next)
+                                    }
+                                )
+                            }
 
-            when (mode) {
-                NotificationExpansionMode.COLLAPSED -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { updateMode(NotificationExpansionMode.EXPANDED) },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                            Text(
-                                text = spec.collapsedTitle,
-                                style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = spec.collapsedSubtitle,
-                                style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            text = "⌄",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    PortfolioFluctuationBar(
-                        spec = spec,
-                        density = FluctuationBarDensity.COMPACT
-                    )
-                }
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                NotificationExpansionMode.EXPANDED -> {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { updateMode(NotificationExpansionMode.COLLAPSED) },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                            Text(
-                                text = spec.expandedTitle,
-                                style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = spec.expandedSubtitle,
-                                style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            when (mode) {
+                                NotificationExpansionMode.COLLAPSED -> {
+                                    Text(
+                                        text = spec.collapsedTitle,
+                                        style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    PortfolioFluctuationBar(
+                                        spec = spec,
+                                        density = FluctuationBarDensity.COMPACT
+                                    )
+                                }
+                                NotificationExpansionMode.EXPANDED -> {
+                                    Text(
+                                        text = spec.expandedTitle,
+                                        style = MaterialTheme.typography.titleSmall.merge(MarketWearTextStyles.Tabular),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = spec.expandedSubtitle,
+                                        style = MaterialTheme.typography.bodySmall.merge(MarketWearTextStyles.Tabular),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    PortfolioFluctuationBar(
+                                        spec = spec,
+                                        density = FluctuationBarDensity.STANDARD
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        NotificationActionPill(
+                                            label = "100% / Raw",
+                                            onClick = { onIntent(MarketIntent.ToggleWeightMode) }
+                                        )
+                                        NotificationActionPill(
+                                            label = "All 37",
+                                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.ALL_37)) }
+                                        )
+                                        NotificationActionPill(
+                                            label = "Top 10",
+                                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.TOP_10)) }
+                                        )
+                                        NotificationActionPill(
+                                            label = "Sync",
+                                            onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)) }
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        Text(
-                            text = "⌃",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    PortfolioFluctuationBar(
-                        spec = spec,
-                        density = FluctuationBarDensity.STANDARD
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NotificationActionPill(
-                            label = "100% / Raw",
-                            onClick = { onIntent(MarketIntent.ToggleWeightMode) }
-                        )
-                        NotificationActionPill(
-                            label = "All 37",
-                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.ALL_37)) }
-                        )
-                        NotificationActionPill(
-                            label = "Top 10",
-                            onClick = { onIntent(MarketIntent.ApplyHoldingPreset(HoldingSelectionPreset.TOP_10)) }
-                        )
-                        NotificationActionPill(
-                            label = "Sync",
-                            onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)) }
-                        )
                     }
                 }
             }
@@ -461,7 +546,9 @@ private fun NotificationActionPill(
             text = label,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

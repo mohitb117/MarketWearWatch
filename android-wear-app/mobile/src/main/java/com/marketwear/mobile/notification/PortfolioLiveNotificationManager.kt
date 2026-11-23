@@ -265,7 +265,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             builder.addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, arrowIconRes),
-                    "100% / Raw",
+                    "Toggle Norm",
                     toggleWeightModeIntent
                 ).build()
             )
@@ -320,7 +320,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             builder.addAction(
                 NotificationCompat.Action.Builder(
                     arrowIconRes,
-                    "100% / Raw",
+                    "Toggle Norm",
                     toggleWeightModeIntent
                 ).build()
             )
