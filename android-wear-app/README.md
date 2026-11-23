@@ -8,10 +8,13 @@ A standalone, battery-efficient Wear OS application delivering live financial in
 ---
 
 ## Architecture & Battery Optimization
+- **Single Source of Truth (SSOT)**: The local Room database (`IndexQuoteDao.getAllQuotesFlow()`) serves as the authoritative commit boundary. All on-wrist modalities—Complications, Wear OS Carousel Tile (`MarketWearPortfolioTileService`), Ongoing Wrist Notification (`WatchLiveNotificationManager`), and the Wear Compose app (`MarketViewModel`)—are kept 100% synchronized via `WatchMarketSyncHub` from a single data trigger.
 - **SuspendingComplicationDataSourceService**: Uses modern non-blocking coroutines to serve complication payloads.
-- **Aggressive 15-Minute Cache**: Respects Google Wear OS power recommendations. Quotas and battery remain protected; updates are batched.
+- **Wear OS Carousel Tile Widget**: Features `MarketWearPortfolioTileService` for instantaneous wrist-flick glanceable portfolio score preview.
+- **Aggressive 15-Minute Cache & Freshness Guards**: Respects Google Wear OS power recommendations. Quotas and battery remain protected; updates are batched.
+- **Bidirectional Phone Sync**: When the watch refreshes standalone, quotes are pushed back to the companion phone via `WearConstants.PATH_MARKET_QUOTES` to ensure the phone UI and widgets never lag behind.
 - **Ambient Always-On-Display (AOD) Compliant**: Monochromatic clean rendering on low-power display states.
-- **Standalone App (\`com.google.android.wearable.standalone = true\`)**: Installs independently directly on Pixel Watch without requiring a running phone app.
+- **Standalone App (`com.google.android.wearable.standalone = true`)**: Installs independently directly on Pixel Watch without requiring a running phone app.
 - **KMP Multi-Surface Sharing**: Shares `:shared` (models, `PortfolioRegistry`, enum state shapes, `SharedMarketClient` with `Mutex` coalescing & `Semaphore(6)`), and powers Phone, Desktop (`./gradlew :desktop:runDesktop`), iOS, and Web via `:shared-ui` + `MarketWearDesignTokens`.
 - **Repeatable ADB Install**: Run `./scripts/discover-and-install.sh` to restart `adb`, discover phone & watch via mDNS/USB, build `:app:assembleDebug` + `:mobile:assembleDebug`, and install both APKs.
 

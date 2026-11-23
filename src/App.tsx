@@ -239,13 +239,15 @@ export default function App() {
               <span>·</span>
               <span className="text-purple-400 font-medium">KMP + Koin 4.0.0 DI</span>
               <span>·</span>
+              <span className="text-sky-400 font-medium">Single Source of Truth (SSOT)</span>
+              <span>·</span>
               <span className="text-emerald-400 font-medium">Battery-Optimized Sync</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
               Financial Market Ecosystem for Wear OS, Android &amp; KMP
             </h1>
             <p className="text-sm text-neutral-400 mt-1 max-w-2xl">
-              Cross-device financial intelligence powered by a Kotlin Multiplatform shared core, Koin DI, Room cache, and market-hours-aware background sync for minimal watch battery drain.
+              Cross-device financial intelligence driven by an authoritative Single Source of Truth (SSOT) reactive pipeline, Kotlin Multiplatform core, Koin DI, Room cache, and synchronized delivery across Phone, Watch, Glance Widgets, Carousel Tiles &amp; Complications.
             </p>
           </div>
 
@@ -357,6 +359,30 @@ export default function App() {
                   <span>Phone Companion</span>
                 </button>
               </div>
+            </div>
+
+            {/* Single Source of Truth (SSOT) Multi-Surface Reactive Pillar Card */}
+            <div className="bg-gradient-to-r from-sky-950/40 via-neutral-900/60 to-purple-950/40 border border-sky-900/40 rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-sky-400">
+                    Architectural Pillar: Single Source of Truth (SSOT)
+                  </span>
+                  <span className="text-neutral-500 hidden sm:inline">|</span>
+                  <span className="text-xs text-neutral-300 font-medium">
+                    1 Trigger &rarr; 7 Synchronized Modalities
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800">
+                  <span className="text-sky-300">PhoneMarketSyncHub</span>
+                  <span className="text-neutral-600">&amp;</span>
+                  <span className="text-purple-300">WatchMarketSyncHub</span>
+                </div>
+              </div>
+              <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
+                Every UI modality operates as a passive observer of an authoritative local data stream. A single market price update immediately and simultaneously synchronizes the <strong>Phone App</strong>, <strong>Android 16 Live Activity</strong>, <strong>Glance Widget</strong>, <strong>Wear OS App</strong>, <strong>Watch Carousel Tile</strong>, <strong>Wrist Ongoing Notification</strong>, and <strong>Watch Face Complications</strong> with zero race conditions.
+              </p>
             </div>
 
             {/* Main Interactive Stage */}
