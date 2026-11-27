@@ -258,6 +258,50 @@ const DIAGRAMS: DiagramSpec[] = [
         WatchUI-->>User: Screen shows fresh prices
     end`,
   },
+  {
+    id: 'persistence-dashboardflow',
+    title: 'Persistence-Layer dashboardFlow & Zero-Calculation Modalities',
+    subtitle: 'MarketRepository and MobileMarketRepository compute dashboardFlow centrally. Presentation layers purely observe without recalculating math or fallback branches.',
+    badge: 'Persistence Flow',
+    code: `flowchart TD
+    subgraph PersistenceLayer ["Persistence Layer: MarketRepository / MobileMarketRepository"]
+        RoomDB[("Room Database / DataStore Quotes")]
+        UserWeights["Holdings & Weight Preferences (DataStore)"]
+        CombineOp["combine(quotes, weightMode, disabledIds, customWeights)"]
+        Builder["MarketUiStateBuilder.buildDashboardState()"]
+        DashFlow["val dashboardFlow: StateFlow<MarketDashboardState>\\n(Eager, Shared, Authoritative)"]
+
+        RoomDB --> CombineOp
+        UserWeights --> CombineOp
+        CombineOp --> Builder --> DashFlow
+    end
+
+    subgraph WatchPresentation ["Wear OS Watch Presentation Layer"]
+        WatchHub["WatchMarketSyncHub"]
+        WatchNotif["WatchLiveNotificationManager\\n(showOrUpdateFromDashboard)"]
+        WatchTile["MarketWearPortfolioTileService\\n(Reads dashboardFlow.value)"]
+        Complications["Watch Face Complications\\n(requestUpdateAll)"]
+        WatchUI["MarketViewModel (MVI UI State)"]
+
+        DashFlow -->|observe| WatchHub
+        DashFlow -->|direct read| WatchTile
+        DashFlow -->|observe| WatchUI
+        WatchHub -->|direct state| WatchNotif
+        WatchHub -->|trigger update| Complications
+    end
+
+    subgraph PhonePresentation ["Android Phone Companion Presentation Layer"]
+        PhoneHub["PhoneMarketSyncHub"]
+        PhoneNotif["PortfolioLiveNotificationManager\\n(showOrUpdateFromDashboard)"]
+        GlanceWidget["MarketGlanceWidget\\n(Reads dashboardFlow.value)"]
+        PhoneUI["MobileMarketStore (MVI UI State)"]
+
+        DashFlow -->|observe| PhoneHub
+        DashFlow -->|direct read| GlanceWidget
+        DashFlow -->|observe| PhoneUI
+        PhoneHub -->|direct state| PhoneNotif
+    end`,
+  },
 ];
 
 let mermaidInitialized = false;
