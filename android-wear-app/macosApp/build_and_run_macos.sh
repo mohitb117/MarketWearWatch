@@ -8,7 +8,11 @@ CONTENTS="$APP_BUNDLE/Contents"
 MACOS_BIN="$CONTENTS/MacOS/$APP_NAME"
 SDK_PATH="$(xcrun --show-sdk-path --sdk macosx)"
 
-mkdir -p "$CONTENTS/MacOS" /tmp/mw_swift_cache
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" /tmp/mw_swift_cache
+
+if [[ -f "$ROOT_DIR/macosApp/Resources/AppIcon.icns" ]]; then
+  cp "$ROOT_DIR/macosApp/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
+fi
 
 echo "Compiling $APP_NAME with Apple Swift against macOS SDK..."
 TMPDIR=/tmp xcrun swiftc \
@@ -31,6 +35,8 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
 <dict>
     <key>CFBundleExecutable</key>
     <string>MarketWearIsland</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.marketwear.macos.island</string>
     <key>CFBundleInfoDictionaryVersion</key>
