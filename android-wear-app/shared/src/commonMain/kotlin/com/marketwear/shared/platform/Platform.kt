@@ -17,3 +17,9 @@ expect fun createPlatformHttpClient(): HttpClient
  * Used to avoid waking device radios overnight and on weekends.
  */
 expect fun isUsMarketWindowActive(): Boolean
+
+/**
+ * Returns true if regular US equity markets (9:30 AM America/New_York) opened between
+ * [lastFetchMillis] and [currentMillis]. When true, pre-market caches must be invalidated.
+ */
+expect fun hasMarketOpenedSince(lastFetchMillis: Long, currentMillis: Long): Boolean

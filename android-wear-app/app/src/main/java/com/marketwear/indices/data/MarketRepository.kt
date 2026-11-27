@@ -65,12 +65,13 @@ class MarketRepository(
      * Otherwise delegates to paired phone via Wearable Data Layer, or uses concurrent Ktor fallback.
      */
     suspend fun refreshWithPhoneFallback(
-        policy: RefreshPolicy = RefreshPolicy.FORCE_CORE_QUOTES
+        policy: RefreshPolicy = RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
     ): Unit = withContext(Dispatchers.IO) {
         if (policy == RefreshPolicy.CACHE_FIRST && isCacheFresh()) {
             return@withContext
         }
 
+        // Signal paired phone to refresh its own local state if reachable
         val phoneNode = getConnectedPhoneNode()
         if (phoneNode != null) {
             try {
@@ -79,13 +80,13 @@ class MarketRepository(
                     WearConstants.PATH_REQUEST_REFRESH,
                     ByteArray(0)
                 ).await()
-                return@withContext
             } catch (_: Exception) {
-                // If message failed, fall through to direct fetch
+                // Phone notification failure is non-fatal
             }
         }
 
-        // Fallback: concurrent online fetch on watch (single pooled Ktor client)
+        // Always perform authoritative fetch directly on watch (works over Wi-Fi, LTE, or Bluetooth internet proxy).
+        // This guarantees the local Room DB, complications, tiles, and notifications update immediately.
         refreshAllOnline(policy = policy)
     }
 
@@ -94,7 +95,12 @@ class MarketRepository(
         if (cached.size < MarketRegistry.ALL_INSTRUMENTS.size) return false
         val now = System.currentTimeMillis()
         val maxAge = if (isUsMarketWindowActive()) ACTIVE_FRESHNESS_MS else OFF_HOURS_FRESHNESS_MS
-        return cached.all { (now - it.lastUpdated) < maxAge }
+        val allWithinTtl = cached.all { (now - it.lastUpdated) < maxAge }
+        if (!allWithinTtl) return false
+
+        // Invalidate if regular US equity markets opened since the quotes were cached
+        val oldestUpdate = cached.minOfOrNull { it.lastUpdated } ?: 0L
+        return !com.marketwear.shared.platform.hasMarketOpenedSince(oldestUpdate, now)
     }
 
     private suspend fun getConnectedPhoneNode(): com.google.android.gms.wearable.Node? {

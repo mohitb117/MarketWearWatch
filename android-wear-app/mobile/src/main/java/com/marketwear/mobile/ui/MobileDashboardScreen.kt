@@ -288,7 +288,7 @@ fun MobileDashboardContent(
                                             .clickable(enabled = !isRefreshing) {
                                                 onIntent(
                                                     MobileMarketIntent.Core(
-                                                        MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)
+                                                        MarketIntent.RequestRefresh(RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO)
                                                     )
                                                 )
                                             },

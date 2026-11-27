@@ -3,6 +3,7 @@ package com.marketwear.indices.data
 import android.content.Context
 import com.marketwear.shared.model.TickerIntradayData
 import com.marketwear.shared.ui.MarketStateReducer
+import com.marketwear.shared.ui.PortfolioWeightMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,18 @@ class WatchPortfolioSelectionStore(context: Context) {
     private val _cachedTickerIntradayData = MutableStateFlow(loadIntradayData())
     val cachedTickerIntradayData: StateFlow<Map<String, TickerIntradayData>> =
         _cachedTickerIntradayData.asStateFlow()
+
+    private val _weightMode = MutableStateFlow(loadWeightMode())
+    val weightMode: StateFlow<PortfolioWeightMode> = _weightMode.asStateFlow()
+
+    fun setWeightMode(mode: PortfolioWeightMode) {
+        if (mode != _weightMode.value) {
+            _weightMode.value = mode
+            prefs.edit()
+                .putString(KEY_WEIGHT_MODE, mode.name)
+                .apply()
+        }
+    }
 
     fun toggleHolding(holdingId: String): Set<String> {
         val next = MarketStateReducer.reduceHoldingToggle(_disabledHoldingIds.value, holdingId)
@@ -90,10 +103,20 @@ class WatchPortfolioSelectionStore(context: Context) {
         }
     }
 
+    private fun loadWeightMode(): PortfolioWeightMode {
+        val raw = prefs.getString(KEY_WEIGHT_MODE, null) ?: return PortfolioWeightMode.NORMALIZED_100
+        return try {
+            PortfolioWeightMode.valueOf(raw)
+        } catch (_: Exception) {
+            PortfolioWeightMode.NORMALIZED_100
+        }
+    }
+
     companion object {
         private const val PREFS_NAME = "marketwear_watch_portfolio_selection"
         private const val KEY_DISABLED_HOLDING_IDS = "disabled_holding_ids"
         private const val KEY_CUSTOM_WEIGHTS = "custom_holding_weights_v1"
         private const val KEY_INTRADAY_CACHE = "intraday_cache_v1"
+        private const val KEY_WEIGHT_MODE = "portfolio_weight_mode_v1"
     }
 }

@@ -31,6 +31,26 @@ actual fun isUsMarketWindowActive(): Boolean {
     return minutesSinceMidnight in 510L..1020L
 }
 
+actual fun hasMarketOpenedSince(lastFetchMillis: Long, currentMillis: Long): Boolean {
+    if (lastFetchMillis <= 0L) return true
+    val nyZone = NSTimeZone.timeZoneWithName("America/New_York") ?: return true
+    val calendar = NSCalendar.currentCalendar.apply { timeZone = nyZone }
+    val currentDate = NSDate(timeIntervalSince1970 = currentMillis / 1000.0)
+    val comp = calendar.components(NSCalendarUnitWeekday or NSCalendarUnitHour or NSCalendarUnitMinute, fromDate = currentDate)
+    val weekday = comp.weekday
+    if (weekday == 1L || weekday == 7L) return false
+    val currentMinutes = comp.hour * 60L + comp.minute
+    if (currentMinutes < 570L) return false
+
+    val lastDate = NSDate(timeIntervalSince1970 = lastFetchMillis / 1000.0)
+    val isSameDay = calendar.isDate(currentDate, inSameDayAsDate = lastDate)
+    if (!isSameDay) return true
+
+    val lastComp = calendar.components(NSCalendarUnitHour or NSCalendarUnitMinute, fromDate = lastDate)
+    val lastMinutes = lastComp.hour * 60L + lastComp.minute
+    return lastMinutes < 570L
+}
+
 actual fun createPlatformHttpClient(): HttpClient {
     return HttpClient(Darwin) {
         install(ContentNegotiation) {

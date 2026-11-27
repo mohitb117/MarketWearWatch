@@ -8,6 +8,7 @@ import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.model.TickerIntradayData
 import com.marketwear.shared.platform.createPlatformHttpClient
 import com.marketwear.shared.platform.currentTimeMillis
+import com.marketwear.shared.platform.hasMarketOpenedSince
 import com.marketwear.shared.platform.isUsMarketWindowActive
 import com.marketwear.shared.ui.RefreshPolicy
 import io.ktor.client.HttpClient
@@ -50,15 +51,29 @@ class SharedMarketClient(
 
     companion object {
         /**
-         * The 37 portfolio holdings are only refreshed once every 2 hours (120 minutes).
+         * Active US market portfolio holdings cache TTL: 5 minutes.
+         * Off-hours portfolio holdings cache TTL: 2 hours.
          */
-        const val PORTFOLIO_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000L
+        const val ACTIVE_PORTFOLIO_CACHE_MS = 5 * 60 * 1000L
+        const val OFF_HOURS_PORTFOLIO_CACHE_MS = 2 * 60 * 60 * 1000L
 
         /**
          * Core indices/sectors cache TTL: 5 minutes during US market hours, 6 hours off-hours.
          */
         const val ACTIVE_CORE_CACHE_MS = 5 * 60 * 1000L
         const val OFF_HOURS_CORE_CACHE_MS = 6 * 60 * 60 * 1000L
+    }
+
+    /**
+     * Evaluates whether cached portfolio ticker intraday data is fresh and valid.
+     * Guarantees that pre-market data is immediately invalidated once regular market opens (9:30 AM ET),
+     * and that active market prices are kept to a strict 5-minute maximum age.
+     */
+    fun isPortfolioCacheValid(now: Long = currentTimeMillis()): Boolean {
+        if (cachedTickerIntradayMap.isEmpty() || lastPortfolioFetchMillis <= 0L) return false
+        if (hasMarketOpenedSince(lastPortfolioFetchMillis, now)) return false
+        val ttl = if (isUsMarketWindowActive()) ACTIVE_PORTFOLIO_CACHE_MS else OFF_HOURS_PORTFOLIO_CACHE_MS
+        return (now - lastPortfolioFetchMillis) < ttl
     }
 
     suspend fun fetchQuote(symbol: String): IndexQuote {
@@ -167,8 +182,12 @@ class SharedMarketClient(
 
         val portfolioPolicy = when (policy) {
             RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO -> RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
-            RefreshPolicy.CACHE_FIRST,
-            RefreshPolicy.FORCE_CORE_QUOTES -> RefreshPolicy.CACHE_FIRST
+            RefreshPolicy.FORCE_CORE_QUOTES -> {
+                if (isPortfolioCacheValid(now)) RefreshPolicy.CACHE_FIRST else RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
+            }
+            RefreshPolicy.CACHE_FIRST -> {
+                if (isPortfolioCacheValid(now)) RefreshPolicy.CACHE_FIRST else RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
+            }
         }
         val portfolioQuote = fetchOrReusePortfolioQuote(
             policy = portfolioPolicy,
@@ -186,9 +205,9 @@ class SharedMarketClient(
     }
 
     /**
-     * Fetches the 37 portfolio positions at most once every 2 hours unless
-     * [RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO] is requested; reuses cached ticker data otherwise
-     * and recomputes dynamically for [disabledHoldingIds].
+     * Fetches the 37 portfolio positions, reusing cached ticker data within the active market window
+     * (5 minutes) or off-hours (2 hours), unless [RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO] is requested.
+     * Automatically invalidates pre-market caches when the 9:30 AM ET market open is crossed.
      */
     suspend fun fetchOrReusePortfolioQuote(
         policy: RefreshPolicy = RefreshPolicy.CACHE_FIRST,
@@ -198,7 +217,7 @@ class SharedMarketClient(
         val now = currentTimeMillis()
         val existingMap = cachedTickerIntradayMap
         val allowPortfolioCache = policy != RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
-        if (allowPortfolioCache && existingMap.isNotEmpty() && (now - lastPortfolioFetchMillis) < PORTFOLIO_REFRESH_INTERVAL_MS) {
+        if (allowPortfolioCache && isPortfolioCacheValid(now)) {
             val recomputed = PortfolioRegistry.computePortfolioQuote(
                 dataByYahooTicker = existingMap,
                 timestampMillis = lastPortfolioFetchMillis,

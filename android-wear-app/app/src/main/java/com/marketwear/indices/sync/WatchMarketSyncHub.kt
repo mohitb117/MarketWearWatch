@@ -7,12 +7,20 @@ import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.indices.tile.MarketWearPortfolioTileService
+import com.marketwear.shared.ui.PortfolioWeightMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+
+private data class WatchSyncState(
+    val quotes: List<IndexQuote>,
+    val disabledIds: Set<String>,
+    val customWeights: Map<String, Double>,
+    val weightMode: PortfolioWeightMode
+)
 
 /**
  * Single Source of Truth Reactive Dispatcher for Wear OS.
@@ -36,12 +44,18 @@ class WatchMarketSyncHub(
             combine(
                 repository.quotesFlow,
                 selectionStore.disabledHoldingIds,
-                selectionStore.customWeights
-            ) { quotes, disabledIds, customWeights ->
-                Triple(quotes, disabledIds, customWeights)
-            }.distinctUntilChanged().collect { (quotes, disabledIds, customWeights) ->
-                if (quotes.isNotEmpty()) {
-                    dispatchToAllModalities(quotes, disabledIds, customWeights)
+                selectionStore.customWeights,
+                selectionStore.weightMode
+            ) { quotes, disabledIds, customWeights, weightMode ->
+                WatchSyncState(quotes, disabledIds, customWeights, weightMode)
+            }.distinctUntilChanged().collect { state ->
+                if (state.quotes.isNotEmpty()) {
+                    dispatchToAllModalities(
+                        quotes = state.quotes,
+                        disabledIds = state.disabledIds,
+                        customWeights = state.customWeights,
+                        weightMode = state.weightMode
+                    )
                 }
             }
         }
@@ -50,7 +64,8 @@ class WatchMarketSyncHub(
     private fun dispatchToAllModalities(
         quotes: List<IndexQuote>,
         disabledIds: Set<String>,
-        customWeights: Map<String, Double>
+        customWeights: Map<String, Double>,
+        weightMode: PortfolioWeightMode
     ) {
         // 1. Wear Complications
         try {
@@ -70,6 +85,7 @@ class WatchMarketSyncHub(
         try {
             liveNotificationManager.showOrUpdateFromQuotes(
                 quotes = quotes,
+                weightMode = weightMode,
                 disabledHoldingIds = disabledIds,
                 customWeights = customWeights
             )

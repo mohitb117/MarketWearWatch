@@ -99,19 +99,17 @@ class MarketGlanceWidget : GlanceAppWidget(), KoinComponent {
     private val selectionStore: PortfolioSelectionStore by inject()
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val rawQuotes = repository.quotes.value
+        val snapshot = repository.snapshotFlow.value
+        val rawQuotes = snapshot.quotes
+            .ifEmpty { repository.quotes.value }
             .ifEmpty { selectionStore.cachedQuotes.value }
             .ifEmpty { MarketRegistry.getFallbackQuotes() }
-        val disabledIds = selectionStore.disabledHoldingIds.value
-        val customWeights = selectionStore.customWeights.value
+        val disabledIds = snapshot.disabledHoldingIds.ifEmpty { selectionStore.disabledHoldingIds.value }
+        val customWeights = snapshot.customWeights.ifEmpty { selectionStore.customWeights.value }
         val weightMode = selectionStore.weightMode.value
-        val recomputedQuotes = repository.recomputePortfolioForSelection(
-            disabledHoldingIds = disabledIds,
-            customWeights = customWeights
-        ).ifEmpty { rawQuotes }
 
         val dashboard = MarketUiStateBuilder.buildDashboardState(
-            quotes = recomputedQuotes,
+            quotes = rawQuotes,
             weightMode = weightMode,
             disabledHoldingIds = disabledIds,
             customWeights = customWeights
