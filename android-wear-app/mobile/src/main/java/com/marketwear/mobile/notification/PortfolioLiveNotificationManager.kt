@@ -44,7 +44,8 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         private const val LEGACY_CHANNEL_V2 = "marketwear_portfolio_live_v2"
         private const val LEGACY_CHANNEL_V3 = "marketwear_portfolio_live_v3"
         private const val LEGACY_CHANNEL_V4 = "marketwear_portfolio_live"
-        const val CHANNEL_ID = "marketwear_portfolio_live_v5"
+        private const val LEGACY_CHANNEL_V5 = "marketwear_portfolio_live_v5"
+        const val CHANNEL_ID = "marketwear_portfolio_live_v6"
         const val CHANNEL_NAME = "Portfolio Live Updates"
         const val NOTIFICATION_ID = 1001
         private const val REQUEST_CODE_LAUNCH = 1001
@@ -218,7 +219,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         val trackerRes = trackerIconRes(spec.momentumBand)
 
         val progressStyle = Notification.ProgressStyle()
-            .setStyledByProgress(false)
+            .setStyledByProgress(true)
             .setProgress(spec.progress)
             .setProgressSegments(
                 spec.segments.map { seg ->
@@ -257,12 +258,13 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             .setShortCriticalText(chipText)
             .setWhen(now)
             .setShowWhen(true)
-            .setProgress(spec.maxProgress, spec.progress, false)
             .setColor(spec.accentArgb)
             .setOngoing(true)
             .setLocalOnly(true)
             .setOnlyAlertOnce(true)
             .setRequestPromotedOngoing(true)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(Notification.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
@@ -335,6 +337,8 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             .setOngoing(true)
             .setLocalOnly(true)
             .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setContentIntent(launchIntent)
@@ -381,6 +385,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V2)
             notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V3)
             notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V4)
+            notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V5)
         }
         val existing = notificationManager.getNotificationChannel(CHANNEL_ID)
         if (existing != null) return
@@ -388,7 +393,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
             CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Live 50%-centered daily portfolio fluctuation bar on Android 16+"
             setSound(null, null)
