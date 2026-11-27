@@ -1,62 +1,189 @@
-# MarketWear: S&P 500 & Nasdaq 100 Complications for Google Pixel Watch
+# MarketWear: Multi-Surface Financial Telemetry & Portfolio Platform
 
-> **Looking for the full ecosystem architecture & diagrams?**  
-> See the [Root MarketWear README](../README.md) for the multi-module architecture, Wearable Data Layer sync protocol, 11 market sectors, Jetpack Glance widget, and Mermaid diagrams.
+> **Obsidian Terminal Financial Intelligence** across Google Pixel Watch, Android Mobile, Compose Multiplatform Desktop, macOS Dynamic Island Notch, and native macOS Desktop Widgets.
 
-A standalone, battery-efficient Wear OS application delivering live financial index quotes (S&P 500 ^GSPC and Nasdaq 100 ^NDX) directly to Google Pixel Watch dials via the official modern AndroidX WatchFace Complications API.
-
----
-
-## Architecture & Battery Optimization
-- **Single Source of Truth (SSOT)**: The local Room database (`IndexQuoteDao.getAllQuotesFlow()`) serves as the authoritative commit boundary. All on-wrist modalities—Complications, Wear OS Carousel Tile (`MarketWearPortfolioTileService`), Ongoing Wrist Notification (`WatchLiveNotificationManager`), and the Wear Compose app (`MarketViewModel`)—are kept 100% synchronized via `WatchMarketSyncHub` from a single data trigger.
-- **SuspendingComplicationDataSourceService**: Uses modern non-blocking coroutines to serve complication payloads.
-- **Wear OS Carousel Tile Widget**: Features `MarketWearPortfolioTileService` for instantaneous wrist-flick glanceable portfolio score preview.
-- **Aggressive 15-Minute Cache & Freshness Guards**: Respects Google Wear OS power recommendations. Quotas and battery remain protected; updates are batched.
-- **Bidirectional Phone Sync**: When the watch refreshes standalone, quotes are pushed back to the companion phone via `WearConstants.PATH_MARKET_QUOTES` to ensure the phone UI and widgets never lag behind.
-- **Ambient Always-On-Display (AOD) Compliant**: Monochromatic clean rendering on low-power display states.
-- **Standalone App (`com.google.android.wearable.standalone = true`)**: Installs independently directly on Pixel Watch without requiring a running phone app.
-- **KMP Multi-Surface Sharing**: Shares `:shared` (models, `PortfolioRegistry`, enum state shapes, `SharedMarketClient` with `Mutex` coalescing & `Semaphore(6)`), and powers Phone, Desktop (`./gradlew :desktop:runDesktop`), iOS, and Web via `:shared-ui` + `MarketWearDesignTokens`.
-- **Repeatable ADB Install**: Run `./scripts/discover-and-install.sh` to restart `adb`, discover phone & watch via mDNS/USB, build `:app:assembleDebug` + `:mobile:assembleDebug`, and install both APKs.
+MarketWear is a unified, battery-efficient financial index and portfolio telemetry ecosystem. It computes a real-time, center-origin portfolio score (37 institutional holdings across all 11 market sectors) and delivers instantaneous glanceable intelligence across every screen you use.
 
 ---
 
-## Installation on Pixel Watch 4
+## 🏛 Multi-Surface Architecture & Ecosystem
 
-### Method 1: Google Play Personal App Library
-1. In [Google Play Console](https://play.google.com/console), create or open your app.
-2. Go to **Testing > Internal testing** or **Internal app sharing**.
-3. Upload \`app-release.aab\` or \`app-release.apk\`.
-4. Add your email address (\`mohitb117@gmail.com\`) to the testers list and accept the opt-in invite.
-5. On your Pixel Watch, open **Google Play Store**, scroll down to **"Apps on your phone"** or **"Personal app library"**, and tap **Install**.
+```mermaid
+flowchart TD
+    subgraph Ingest ["Data Ingestion Engine (:shared)"]
+        Yahoo["Yahoo Finance API"]
+        Ktor["Ktor HTTP Client\n(SharedMarketClient)"]
+        Coalesce["Mutex Request Coalescing &\nSemaphore Rate Limiting"]
+        Yahoo --> Ktor --> Coalesce
+    end
+
+    subgraph CoreEngine [":shared Core SSOT"]
+        Registry["PortfolioRegistry\n(37 Holdings & Sector Weights)"]
+        Builder["MarketUiStateBuilder\n(Bipolar Log Gauge & Telemetry Specs)"]
+        Coalesce --> Registry --> Builder
+    end
+
+    subgraph WearOS [":app — Google Pixel Watch 4"]
+        RoomDB[("Room Database\n(Authoritative Wrist SSOT)")]
+        WatchHub["WatchMarketSyncHub"]
+        Complications["Watch Face Complications\n(S&P 500, Nasdaq, Dual, Score)"]
+        CarouselTile["Wear OS Carousel Tile\n(MarketWearPortfolioTileService)"]
+        WristNotif["Ongoing Wrist Notification\n(WatchLiveNotificationManager)"]
+        WearCompose["Wear Compose App\n(MarketViewModel)"]
+
+        RoomDB --> WatchHub
+        WatchHub --> Complications
+        WatchHub --> CarouselTile
+        WatchHub --> WristNotif
+        WatchHub --> WearCompose
+    end
+
+    subgraph MobileDevice [":mobile — Android Phone Companion"]
+        PhoneRepo["MobileMarketRepository\n(Authoritative Phone SSOT)"]
+        PhoneHub["PhoneMarketSyncHub"]
+        PhoneUI["Phone App Dashboard\n(MobileMarketStore MVI)"]
+        GlanceWidget["Android Glance Widget\n(Home Screen)"]
+        LiveActivity["Android 16 Live Activity\n(Status Bar & Lock Screen)"]
+
+        PhoneRepo --> PhoneHub
+        PhoneHub --> PhoneUI
+        PhoneHub --> GlanceWidget
+        PhoneHub --> LiveActivity
+    end
+
+    subgraph DesktopCompose [":desktop — Compose Multiplatform"]
+        DesktopVM["DesktopMarketViewModel\n(Reactive MVI StateFlow)"]
+        DesktopUI["Compose Desktop App\n(Simulation & Intraday Curves)"]
+        BridgeServer["HttpServer Bridge Daemon\n(Loopback Port 49172)"]
+        AtomicFile[("/tmp/marketwear_island_state.json\nAtomic Disk Snapshot")]
+
+        Builder --> DesktopVM
+        DesktopVM --> DesktopUI
+        DesktopVM --> BridgeServer
+        DesktopVM --> AtomicFile
+    end
+
+    subgraph MacOSNative ["macosApp — Native macOS Shells"]
+        NotchApp["MarketWearIsland.app\n(MacBook Hardware Notch & Menu Bar)"]
+        WidgetKit["MarketWearDesktopWidget.appex\n(Sandboxed macOS Desktop Widget)"]
+
+        BridgeServer -->|HTTP /state & /intent| NotchApp
+        AtomicFile -->|Instant Offline Fallback| NotchApp
+        AtomicFile -->|App Sandbox File Read| WidgetKit
+        NotchApp -->|WidgetCenter.reloadAllTimelines| WidgetKit
+    end
+
+    Coalesce --> RoomDB
+    Coalesce --> PhoneRepo
+    RoomDB <-->|Wearable Data Layer| PhoneRepo
+```
 
 ---
 
-### Method 2: Wireless ADB Sideload (2 Minutes)
-1. On Pixel Watch: **Settings > System > About > Versions**. Tap **Build number** 7 times.
-2. Go to **Settings > Developer options**, enable **ADB debugging** and **Wireless debugging**.
-3. Tap **Wireless debugging > Pair new device**. Note the IP, pairing port, and 6-digit code.
-4. On your computer terminal:
+## ⚡ Key Highlights
+
+### 1. Kotlin Multiplatform Single Source of Truth (SSOT)
+- **Zero Networking in Swift**: `macosApp` contains no direct Yahoo Finance network requests, no JSON dictionary decoding, and no duplicated financial math. All networking, rate-limiting, and state construction are encapsulated in `:shared`.
+- **Pure Swift Observers**: Both the macOS Dynamic Island app and the WidgetKit extension consume strongly typed `KmpDashboardState` models produced directly by `:shared`'s `MarketUiStateBuilder`.
+- **Room Database on Wrist**: Room (`IndexQuoteDao.getAllQuotesFlow()`) serves as the authoritative wrist commit point, keeping Complications, Carousel Tiles, Ongoing Notifications, and the Wear Compose app 100% synchronized.
+- **Bidirectional Phone $\leftrightarrow$ Watch Sync**: When either device performs a standalone refresh, updates are synchronized via the Wearable Data Layer (`PATH_MARKET_QUOTES`).
+
+### 2. macOS Native Dynamic Island & Notch Surface
+- **Hardware Notch Snapping**: Custom `NotchMetrics` detect physical MacBook camera cutouts (via `safeAreaInsets` and auxiliary screen areas) and seamlessly anchor the collapsed telemetry ears flush against the top display bezel.
+- **Obsidian Terminal Design**: Custom `NotchIslandShape` renders concave top shoulder flares and smooth rounded corners adhering to the Obsidian Pro design system.
+- **Hover & Pin Interactivity**: Smooth transition from collapsed notch ear metrics to expanded telemetry body with full interactive sparkline scrubbing.
+- **Exit & Control Suite**: Red exit `✕` buttons in notch header and MenuBar popover, inline `Quit` chips, and right-click context menu (`Quit`, `Toggle Pin`, `Sync Live Data`).
+- **Dock Integration**: Custom Retina `AppIcon.icns` matching the mobile app artwork, persistent dock pinning, and `applicationShouldHandleReopen` support.
+
+### 3. macOS Desktop WidgetKit Extension
+- **Small & Medium Widgets**: Glanceable portfolio telemetry and sparklines placed directly on the macOS desktop.
+- **App Sandbox Architecture**: Signed with `com.apple.security.app-sandbox` and verified by macOS PluginKit (`pkd`) and `chronod`.
+- **Zero-Latency Offline Updates**: Sandboxed reads from `/tmp/marketwear_island_state.json` ensure instant rendering on reboot or offline states.
+
+---
+
+## 🚀 Quickstart & Run Guides
+
+### 1. macOS Dynamic Island & Desktop Widget
+To build, codesign with sandbox entitlements, install to `/Applications/MarketWearIsland.app`, register with LaunchServices, and launch:
+```bash
+./macosApp/build_and_run_macos.sh
+```
+
+To run only the background headless KMP bridge daemon (serving `http://127.0.0.1:49172`):
+```bash
+./start_headless_bridge.sh
+```
+
+#### Adding the Widget to macOS Desktop:
+1. Right-click on your macOS desktop and select **"Edit Widgets..."** (or click the date/time in the top-right menu bar and scroll down).
+2. In the search box, search for **`watch`** or **`market`** (or select **MarketWear Watch** in the sidebar).
+3. Drag either the **Small** or **Medium** widget onto your desktop.
+
+---
+
+### 2. Compose Desktop Application
+To run the full Compose Multiplatform desktop window with scenario simulator and interactive watch dial preview:
+```bash
+./gradlew :desktop:runDesktop
+```
+
+---
+
+### 3. Wear OS Watch & Android Mobile Companion
+
+#### Repeatable ADB Discovery & Install:
+Run the automated discovery script to restart `adb`, pair with watch/phone over Wi-Fi or USB, build debug APKs, and install both:
+```bash
+./scripts/discover-and-install.sh
+```
+
+#### Manual Wireless Sideload on Pixel Watch:
+1. On Pixel Watch: **Settings > Developer options > Wireless debugging > Pair new device**.
+2. Pair and connect via terminal:
    ```bash
    adb pair 192.168.1.xxx:PAIRING_PORT
-   # Enter the 6-digit pairing code
-
    adb connect 192.168.1.xxx:CONNECT_PORT
-
-   ./gradlew assembleRelease
+   ./gradlew :app:assembleRelease
    adb -s 192.168.1.xxx:CONNECT_PORT install -r app/build/outputs/apk/release/app-release.apk
    ```
 
----
-
-### Method 3: Wear Installer 2 (From Phone)
-1. Install **Wear Installer 2** from Google Play on your phone and Pixel Watch.
-2. Send \`app-release.apk\` to your phone.
-3. Select the APK inside Wear Installer 2 to install wirelessly onto your watch.
+#### Adding Complications to Pixel Watch Dial:
+1. Long-press your Pixel Watch dial.
+2. Tap the **Edit (Pencil)** icon and swipe to **Complications**.
+3. Select any circular or ranged complication slot and choose **Market Complications > S&P 500**, **Nasdaq 100**, or **Portfolio Score**.
 
 ---
 
-## Adding Complication to Your Watch Face
-1. Touch and hold your Pixel Watch face.
-2. Tap the **Edit (Pencil)** icon.
-3. Swipe to **Complications**.
-4. Tap any circular slot and select **Market Complications > S&P 500** or **Nasdaq 100**.
+## 🧪 Testing & Verification
+
+Run the test suite across all modules:
+```bash
+# Run Desktop and Shared Multiplatform unit tests
+./gradlew :desktop:desktopTest :shared:testDebugUnitTest
+
+# Verify macOS WidgetKit registration with PluginKit
+pluginkit -m -v -i com.marketwear.macos.island.widget
+
+# Verify daemon loopback endpoint
+curl -s "http://127.0.0.1:49172/state" | jq .portfolioState.activeQuote
+```
+
+---
+
+## 📂 Repository Structure
+
+```
+├── app/                  # Wear OS Pixel Watch application (Complications, Carousel Tile, Room DB)
+├── mobile/               # Android Companion Phone app (Glance Widget, Android 16 Live Activity)
+├── desktop/              # Compose Multiplatform Desktop app & Headless Bridge Daemon (port 49172)
+├── macosApp/             # Native macOS Swift/SwiftUI Dynamic Island app & WidgetKit extension
+│   ├── Sources/          # Pure SwiftUI Notch UI, MenuBar popover, and KMP loopback client
+│   ├── WidgetExtension/  # Sandboxed macOS Desktop WidgetKit extension
+│   ├── Resources/        # AppIcon.icns and Widget.entitlements
+│   └── build_and_run_macos.sh # Automated Swiftc compilation, codesigning, and registration
+├── shared/               # KMP core: Ktor client, Room entities, PortfolioRegistry, MVI builders
+├── shared-ui/            # Shared Compose Multiplatform UI components & Obsidian theme tokens
+├── start_headless_bridge.sh # Headless daemon boot script
+└── docs/                 # RFC specifications, architecture diagrams, and design tokens
+```
