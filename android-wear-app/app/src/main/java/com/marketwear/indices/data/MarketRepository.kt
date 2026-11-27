@@ -13,10 +13,18 @@ import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.network.SharedMarketClient
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.MarketDashboardState
+import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.RefreshPolicy
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -38,6 +46,7 @@ class MarketRepository(
     private val messageClient = Wearable.getMessageClient(context)
     private val dataClient = Wearable.getDataClient(context)
     private val json = Json { ignoreUnknownKeys = true }
+    private val repoScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
@@ -46,6 +55,34 @@ class MarketRepository(
             list.map { it.toDomainModel() }
         }
     }
+
+    /**
+     * Single Authoritative Unified Data Flow for Wear OS.
+     * Combines Room quotes with user portfolio preferences (weight mode, custom weights, disabled holdings)
+     * at the persistence layer, pre-computing the exact [MarketDashboardState] for all presentation modalities.
+     */
+    val dashboardFlow: StateFlow<MarketDashboardState> = combine(
+        quotesFlow,
+        selectionStore.weightMode,
+        selectionStore.disabledHoldingIds,
+        selectionStore.customWeights
+    ) { quotes, weightMode, disabledIds, customWeights ->
+        MarketUiStateBuilder.buildDashboardState(
+            quotes = quotes,
+            weightMode = weightMode,
+            disabledHoldingIds = disabledIds,
+            customWeights = customWeights
+        )
+    }.stateIn(
+        scope = repoScope,
+        started = SharingStarted.Eagerly,
+        initialValue = MarketUiStateBuilder.buildDashboardState(
+            quotes = MarketRegistry.getFallbackQuotes(),
+            weightMode = selectionStore.weightMode.value,
+            disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+            customWeights = selectionStore.customWeights.value
+        )
+    )
 
     companion object {
         private const val ACTIVE_FRESHNESS_MS = 5 * 60 * 1000L       // 5 minutes during market hours
@@ -65,12 +102,13 @@ class MarketRepository(
      * Otherwise delegates to paired phone via Wearable Data Layer, or uses concurrent Ktor fallback.
      */
     suspend fun refreshWithPhoneFallback(
-        policy: RefreshPolicy = RefreshPolicy.FORCE_CORE_QUOTES
+        policy: RefreshPolicy = RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO
     ): Unit = withContext(Dispatchers.IO) {
         if (policy == RefreshPolicy.CACHE_FIRST && isCacheFresh()) {
             return@withContext
         }
 
+        // Signal paired phone to refresh its own local state if reachable
         val phoneNode = getConnectedPhoneNode()
         if (phoneNode != null) {
             try {
@@ -79,13 +117,13 @@ class MarketRepository(
                     WearConstants.PATH_REQUEST_REFRESH,
                     ByteArray(0)
                 ).await()
-                return@withContext
             } catch (_: Exception) {
-                // If message failed, fall through to direct fetch
+                // Phone notification failure is non-fatal
             }
         }
 
-        // Fallback: concurrent online fetch on watch (single pooled Ktor client)
+        // Always perform authoritative fetch directly on watch (works over Wi-Fi, LTE, or Bluetooth internet proxy).
+        // This guarantees the local Room DB, complications, tiles, and notifications update immediately.
         refreshAllOnline(policy = policy)
     }
 
@@ -94,7 +132,12 @@ class MarketRepository(
         if (cached.size < MarketRegistry.ALL_INSTRUMENTS.size) return false
         val now = System.currentTimeMillis()
         val maxAge = if (isUsMarketWindowActive()) ACTIVE_FRESHNESS_MS else OFF_HOURS_FRESHNESS_MS
-        return cached.all { (now - it.lastUpdated) < maxAge }
+        val allWithinTtl = cached.all { (now - it.lastUpdated) < maxAge }
+        if (!allWithinTtl) return false
+
+        // Invalidate if regular US equity markets opened since the quotes were cached
+        val oldestUpdate = cached.minOfOrNull { it.lastUpdated } ?: 0L
+        return !com.marketwear.shared.platform.hasMarketOpenedSince(oldestUpdate, now)
     }
 
     private suspend fun getConnectedPhoneNode(): com.google.android.gms.wearable.Node? {

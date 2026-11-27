@@ -185,7 +185,7 @@ fun MarketWearContent(
                     RefreshState.ERROR -> "Retry"
                 }
                 CompactChip(
-                    onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_CORE_QUOTES)) },
+                    onClick = { onIntent(MarketIntent.RequestRefresh(RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO)) },
                     colors = ChipDefaults.secondaryChipColors(),
                     icon = {
                         if (uiState.refreshState == RefreshState.REFRESHING) {

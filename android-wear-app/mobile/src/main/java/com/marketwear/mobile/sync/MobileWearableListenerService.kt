@@ -53,7 +53,7 @@ class MobileWearableListenerService : WearableListenerService(), KoinComponent {
             runBlocking(Dispatchers.IO) {
                 try {
                     repository.fetchAllQuotes(
-                        policy = RefreshPolicy.CACHE_FIRST,
+                        policy = RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO,
                         disabledHoldingIds = selectionStore.disabledHoldingIds.value,
                         customWeights = selectionStore.customWeights.value
                     )

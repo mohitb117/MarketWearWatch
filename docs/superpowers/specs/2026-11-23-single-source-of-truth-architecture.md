@@ -134,13 +134,22 @@ On Wear OS, Room Database (`IndexQuoteDao`) is the sole local source of truth:
 - When the watch performs a standalone online fetch (`MarketRepository.refreshAllOnline()`), it inserts into Room and immediately syncs the quotes and intraday cache back to the phone via `syncQuotesToPhone()`.
 - The phone receives `PATH_MARKET_QUOTES` in `MobileWearableListenerService` and commits them to `MobileMarketRepository`, ensuring the phone never remains on stale data if the watch refreshed first.
 
+### 3.5 Persistence-Layer Reactive `dashboardFlow` & Presentation Layer Logic Minimization
+To eliminate the root cause of market-open UI divergence where complications showed fresh percentages while notifications or widgets displayed stale snapshots:
+1. **Single Persistence Flow (`dashboardFlow`)**:
+   - `MarketRepository` (Watch) and `MobileMarketRepository` (Phone) compute an eager `StateFlow<MarketDashboardState>` combining `quotesFlow`, `weightMode`, `disabledHoldingIds`, and `customWeights` using `MarketUiStateBuilder.buildDashboardState`.
+2. **Minimal Presentation Logic**:
+   - All presentation consumers (`WatchMarketSyncHub`, `PhoneMarketSyncHub`, `MarketWearPortfolioTileService`, `MarketGlanceWidget`, `WatchLiveNotificationManager`, and `PortfolioLiveNotificationManager`) consume `repository.dashboardFlow` directly. No presentation or background worker performs independent weighting, fallback quote discovery, or dashboard reconstruction.
+3. **Race Condition Elimination**:
+   - Redundant notification postings from `MarketViewModel` were removed; all ongoing notifications are dispatched solely by the sync hubs reactively observing `dashboardFlow`.
+
 ---
 
 ## 4. Guarantees & Non-Functional Requirements
 
 | Metric | Target Guarantee | Verification Mechanism |
 | :--- | :--- | :--- |
-| **State Consistency** | 100% synchronized across all 7 presentation modalities | Unit tests & reactive Flow observation |
+| **State Consistency** | 100% synchronized across all 9 presentation modalities (Watch, Phone, macOS) | Unit tests & reactive Flow observation |
 | **Dispatch Latency** | $< 50\text{ms}$ process-local dispatch from ingest to all modalities | In-memory coroutine flows (`StateFlow` / Room `Flow`) |
 | **Echo Loop Prevention** | Zero cyclic ping-pong syncs across Bluetooth | Quote payload equality deduplication check in `PhoneMarketSyncHub` |
 | **Battery Impact** | Zero redundant wakeups; strictly event-driven observation | Modalities wake only when data actually changes; complications remain offline Room reads |

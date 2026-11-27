@@ -114,6 +114,13 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
     }
 
+    fun showOrUpdateFromDashboard(
+        dashboard: com.marketwear.shared.ui.MarketDashboardState,
+        expansionMode: NotificationExpansionMode = NotificationExpansionMode.EXPANDED
+    ) {
+        showOrUpdate(dashboard.portfolioState.liveUpdateSpec, expansionMode)
+    }
+
     fun showOrUpdateFromQuotes(
         quotes: List<IndexQuote>,
         weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,

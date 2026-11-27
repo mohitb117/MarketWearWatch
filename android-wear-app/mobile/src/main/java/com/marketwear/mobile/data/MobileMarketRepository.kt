@@ -5,18 +5,25 @@ import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.model.MarketSnapshot
 import com.marketwear.shared.model.PortfolioRegistry
 import com.marketwear.shared.model.TickerIntradayData
+import com.marketwear.shared.ui.MarketDashboardState
+import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.PortfolioWeightMode
 import com.marketwear.shared.ui.RefreshPolicy
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 
 /**
  * Authoritative phone-side repository for market quotes and portfolio state.
- * Emits unified [MarketSnapshot] instances as a Single Source of Truth for
- * the mobile dashboard UI, live notifications, glance widget, and wear data sync.
+ * Emits unified [MarketSnapshot] and pre-computed [MarketDashboardState] instances as a Single Source of Truth
+ * for the mobile dashboard UI, live notifications, glance widget, and wear data sync.
  */
 class MobileMarketRepository(
     private val client: KtorMarketClient = KtorMarketClient(),
@@ -30,6 +37,35 @@ class MobileMarketRepository(
 
     private val _snapshot = MutableStateFlow(buildSnapshot(initialQuotes))
     val snapshotFlow: StateFlow<MarketSnapshot> = _snapshot.asStateFlow()
+
+    private val repoScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    /**
+     * Single Authoritative Unified Data Flow for Android Mobile.
+     * All calculations and dashboard building are performed right here at the persistence/repository layer.
+     */
+    val dashboardFlow: StateFlow<MarketDashboardState> = combine(
+        quotes,
+        selectionStore?.weightMode ?: MutableStateFlow(PortfolioWeightMode.NORMALIZED_100),
+        selectionStore?.disabledHoldingIds ?: MutableStateFlow(emptySet()),
+        selectionStore?.customWeights ?: MutableStateFlow(emptyMap())
+    ) { currentQuotes, weightMode, disabledIds, customWeights ->
+        MarketUiStateBuilder.buildDashboardState(
+            quotes = currentQuotes.ifEmpty { MarketRegistry.getFallbackQuotes() },
+            weightMode = weightMode,
+            disabledHoldingIds = disabledIds,
+            customWeights = customWeights
+        )
+    }.stateIn(
+        scope = repoScope,
+        started = SharingStarted.Eagerly,
+        initialValue = MarketUiStateBuilder.buildDashboardState(
+            quotes = initialQuotes.ifEmpty { MarketRegistry.getFallbackQuotes() },
+            weightMode = selectionStore?.weightMode?.value ?: PortfolioWeightMode.NORMALIZED_100,
+            disabledHoldingIds = selectionStore?.disabledHoldingIds?.value ?: emptySet(),
+            customWeights = selectionStore?.customWeights?.value ?: emptyMap()
+        )
+    )
 
     companion object {
         @Volatile

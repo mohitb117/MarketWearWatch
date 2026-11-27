@@ -19,6 +19,24 @@ actual fun isUsMarketWindowActive(): Boolean {
     return minutesUtc in (13 * 60 + 30)..(22 * 60)
 }
 
+actual fun hasMarketOpenedSince(lastFetchMillis: Long, currentMillis: Long): Boolean {
+    if (lastFetchMillis <= 0L) return true
+    val now = Date(currentMillis.toDouble())
+    val utcDay = now.getUTCDay()
+    if (utcDay == 0 || utcDay == 6) return false
+    val currentMinutesUtc = now.getUTCHours() * 60 + now.getUTCMinutes()
+    if (currentMinutesUtc < (13 * 60 + 30)) return false
+
+    val last = Date(lastFetchMillis.toDouble())
+    val isSameDay = now.getUTCFullYear() == last.getUTCFullYear() &&
+        now.getUTCMonth() == last.getUTCMonth() &&
+        now.getUTCDate() == last.getUTCDate()
+    if (!isSameDay) return true
+
+    val lastMinutesUtc = last.getUTCHours() * 60 + last.getUTCMinutes()
+    return lastMinutesUtc < (13 * 60 + 30)
+}
+
 actual fun createPlatformHttpClient(): HttpClient {
     return HttpClient(Js) {
         install(ContentNegotiation) {

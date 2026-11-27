@@ -69,6 +69,7 @@ class MarketStoreFactory(
         initialQuotes: List<IndexQuote> = MarketRegistry.getFallbackQuotes(),
         initialDisabledHoldingIds: Set<String> = emptySet(),
         initialCustomWeights: Map<String, Double> = emptyMap(),
+        initialWeightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
         onRecomputeLocalQuotes: (
             existingQuotes: List<IndexQuote>,
             disabledHoldingIds: Set<String>,
@@ -89,13 +90,13 @@ class MarketStoreFactory(
         val initialSanitizedWeights = MarketStateReducer.sanitizeCustomWeights(initialCustomWeights)
         val initialState = MarketStore.State(
             quotes = initialQuotes,
-            weightMode = PortfolioWeightMode.NORMALIZED_100,
+            weightMode = initialWeightMode,
             disabledHoldingIds = initialSanitizedDisabled,
             customWeights = initialSanitizedWeights,
             refreshState = RefreshState.IDLE,
             dashboard = MarketUiStateBuilder.buildDashboardState(
                 quotes = initialQuotes,
-                weightMode = PortfolioWeightMode.NORMALIZED_100,
+                weightMode = initialWeightMode,
                 disabledHoldingIds = initialSanitizedDisabled,
                 customWeights = initialSanitizedWeights
             )

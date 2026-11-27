@@ -63,13 +63,16 @@ class MarketWearPortfolioTileService : TileService(), KoinComponent {
     }
 
     private suspend fun buildTile(requestParams: RequestBuilders.TileRequest): TileBuilders.Tile {
-        val quote = repository.getQuote(PortfolioRegistry.PORTFOLIO_SYMBOL)
-        val spx = repository.getQuote("SPX")
-        val ndx = repository.getQuote("NDX")
+        val dashboard = repository.dashboardFlow.value
+        val cardState = dashboard.portfolioState
+        val spx = dashboard.indices.firstOrNull { it.symbol == "SPX" || it.symbol == "^GSPC" }
+        val ndx = dashboard.indices.firstOrNull { it.symbol == "NDX" || it.symbol == "^NDX" }
+        val spxText = spx?.formattedPercent ?: "+0.00%"
+        val ndxText = ndx?.formattedPercent ?: "+0.00%"
 
-        val scoreText = quote.formattedScore
-        val deltaText = quote.formattedPercent
-        val isPositive = quote.percentChange >= 0.0
+        val scoreText = cardState.activeQuote.formattedScore
+        val deltaText = cardState.activeQuote.formattedPercent
+        val isPositive = cardState.trendDirection == TrendDirection.POSITIVE
 
         val accentColor = if (isPositive) 0xFF00E676.toInt() else 0xFFFF3B30.toInt()
         val pillBgColor = if (isPositive) 0xFF062A1B.toInt() else 0xFF2B0C11.toInt()
@@ -170,7 +173,7 @@ class MarketWearPortfolioTileService : TileService(), KoinComponent {
             // Secondary Range / Index Summary
             .addContent(
                 LayoutElementBuilders.Text.Builder()
-                    .setText("SPX ${spx.formattedPercent} · NDX ${ndx.formattedPercent}")
+                    .setText("SPX $spxText · NDX $ndxText")
                     .setFontStyle(
                         LayoutElementBuilders.FontStyle.Builder()
                             .setSize(sp(10f))

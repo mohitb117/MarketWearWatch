@@ -17,10 +17,14 @@ During market open, financial indices and individual portfolio holdings experien
 - The Android Glance home screen widget and Android 16 Live Activity status-bar chip did not reflect the updated numbers.
 
 ### 1.2 Root Cause Analysis
-An architectural post-mortem revealed that events were being passed imperatively in a fragmented, "helter-skelter" manner across disconnected components:
+An architectural post-mortem revealed that events and cache lifetimes were causing desynchronization across disconnected components:
 1. **Disconnected Memory Flow**: In `:mobile`, `MobileMarketRepository` maintained an in-memory `MutableStateFlow` disconnected from `PortfolioSelectionStore.cachedQuotes`. Background workers and Wearable listeners updated disk caches or sent messages, but the on-screen MVI store did not observe repository emissions.
 2. **Ad-Hoc Imperative Poking**: Modalities (notifications, widgets, tiles, and complications) were updated via disparate, manual method calls scattered throughout `MobileSyncWorker`, `MobileWearableListenerService`, `PortfolioNotificationActionReceiver`, and `MainActivity`. Omitting an update call in any single code path resulted in silent desynchronization.
-3. **Unidirectional Watch Updates**: When the watch fetched quotes directly online via `MarketRepository.refreshAllOnline()`, it updated local Room database entities and triggered complication update requesters, but failed to notify `WatchLiveNotificationManager`, failed to invalidate `MarketWearPortfolioTileService`, and failed to push fresh quotes back to the paired phone.
+3. **Market-Open Pre-Market Cache Lock**: `SharedMarketClient` previously had a hardcoded `PORTFOLIO_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000L` (2 hours) and mapped `FORCE_CORE_QUOTES` to `portfolioPolicy = CACHE_FIRST`. Any pre-market snapshot cached at 8:30 AM ET was retained past the 9:30 AM ET bell until 10:30 AM ET. Complications showed fresh numbers because individual tickers (`SPX`, `NDX`) had 5-minute TTLs, but the composite `PORTFOLIO` quote remained frozen in cache.
+4. **Premature Asynchronous Return on Watch**: `MarketRepository.refreshWithPhoneFallback()` sent `sendMessage(PATH_REQUEST_REFRESH)` and immediately returned `Unit` without fetching local online quotes. If the paired phone was in doze or unreachable, the watch never updated its local Room database.
+5. **Local Recalculation Overwrites**: In `MarketViewModel`, `onRecomputeLocalQuotes()` recomputed `PORTFOLIO` from local watch intraday data every time Room emitted, overwriting fresh authoritative portfolio network quotes with older local data.
+6. **Notification Weight Mode Divergence**: `WatchPortfolioSelectionStore` lacked `weightMode` flow persistence, causing `WatchMarketSyncHub` to always default wrist notifications to `NORMALIZED_100` even when the app was in `RAW_PORTFOLIO`.
+7. **macOS WidgetKit ChronoCore Security Purging**: On macOS Sonoma/Sequoia, `chronod` dropped `MarketWearDesktopWidget.appex` from the desktop "Edit Widgets" gallery because it was ad-hoc signed (`isApple: false`) without an Apple Developer Team ID, its host app had `LSUIElement: true` (background agent rejection), and lacked `CFBundleVersion` (`FOREIGN KEY constraint failed`).
 
 ---
 
@@ -136,7 +140,24 @@ On Wear OS, Room Database (`IndexQuoteDao`) is the sole local source of truth:
 
 ---
 
-### 3.5 Desktop & macOS SSOT Architecture (`:desktop` & `macosApp`)
+### 3.5 Market-Open Boundary & Invalidation Engine (`hasMarketOpenedSince`)
+To eliminate the 2-hour pre-market cache lock across the 9:30 AM ET market open:
+1. **Cross-Platform Time Boundary**: `hasMarketOpenedSince(lastFetchMillis, currentMillis)` is implemented across all platform targets (`Platform.android.kt`, `Platform.desktop.kt`, `Platform.ios.kt`, `Platform.js.kt`). It converts timestamps to America/New_York local time and determines if a 9:30 AM trading day boundary was crossed.
+2. **Adaptive TTL & Invalidation**:
+   - During active trading hours (9:30 AM – 4:00 PM ET on weekdays), the cache TTL drops from 2 hours to `ACTIVE_PORTFOLIO_CACHE_MS = 5 * 60 * 1000L` (5 minutes).
+   - If `hasMarketOpenedSince()` evaluates to `true`, `isPortfolioCacheValid()` immediately returns `false`, forcing a full quote and portfolio recalculation on the very first sync after 9:30 AM ET.
+3. **Forced Refresh Policy**: All manual refresh buttons across phone, watch, desktop notch, and widgets invoke `RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO`.
+
+---
+
+### 3.6 Direct Wrist Network Execution & Authoritative Room Preservation
+1. **No Silent Watch Abort**: In `MarketRepository.refreshWithPhoneFallback()`, the watch transmits `PATH_REQUEST_REFRESH` to the phone, but immediately continues to execute `refreshAllOnline()` using its local Ktor client over Wi-Fi, LTE, or Bluetooth proxy. The watch never relies solely on phone responsiveness.
+2. **Authoritative Room Preservation**: In `MarketViewModel.onRecomputeLocalQuotes()`, when user-selected holdings and weights are default, the ViewModel preserves the authoritative `PORTFOLIO` quote emitted by the Room database rather than recalculating from potentially stale local ticker intraday data.
+3. **Notification Weight Mode Parity**: `WatchPortfolioSelectionStore` exposes a persistent `weightMode: StateFlow<PortfolioWeightMode>`. `WatchMarketSyncHub` observes this flow alongside `quotesFlow`, ensuring wrist notifications reflect the exact same raw or normalized weight mode as the watch and phone UI.
+
+---
+
+### 3.7 Desktop & macOS SSOT Architecture (`:desktop` & `macosApp`)
 
 To extend the Single Source of Truth to the desktop without duplicating networking, parsing, or portfolio calculation algorithms in Swift, MarketWear introduces a headless bridge daemon powered by `:shared` and `:desktop`:
 
@@ -162,10 +183,12 @@ flowchart TD
 
     subgraph macOSNative ["macOS Native Shells (Pure Swift UI Observers)"]
         IslandApp["MarketWearIsland.app\n(Hardware MacBook Notch & Menu Bar)"]
+        FloatingDesk["DesktopWidgetPanelController\n(Floating Obsidian Desktop Widget)"]
         WidgetKitExt["MarketWearDesktopWidget.appex\n(Sandboxed macOS Desktop Widget)"]
 
         BridgeServer -->|HTTP GET /state| IslandApp
         BridgeServer -->|HTTP POST /intent| IslandApp
+        IslandApp --> FloatingDesk
         DiskSnapshot -->|Instant Offline Fallback| IslandApp
         DiskSnapshot -->|App Sandbox File Read| WidgetKitExt
         IslandApp -->|WidgetCenter.reloadAllTimelines| WidgetKitExt
@@ -176,11 +199,14 @@ flowchart TD
 1. **Zero Swift Networking / Business Logic**:
    - `MarketWearMacApp.swift` contains no `URLRequest` to Yahoo Finance, no custom JSON parsing dictionaries, and no manual portfolio math.
    - All models conform to `KmpDashboardState` and `KmpPortfolioCardState`, directly decoded from the JSON emitted by `MarketUiStateBuilder`.
-2. **App Sandbox Compliance for WidgetKit**:
-   - Apple's `pkd` daemon strictly mandates `com.apple.security.app-sandbox = true` on all `.appex` extensions.
-   - [Widget.entitlements](file:///Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/macosApp/Resources/Widget.entitlements) grants sandbox execution and temporary exception access to `/tmp/` and `/private/tmp/` for zero-latency local snapshot reads.
-   - Outer bundle code signing is configured to avoid recursive `--deep` flags that could overwrite the extension's sandbox entitlements.
-3. **Headless Daemon Lifecycle**:
+2. **Native Floating Desktop Widget (`DesktopWidgetPanelController`)**:
+   - Provides an obsidian floating desktop widget placed on the desktop wallpaper that updates every second from the KMP bridge.
+   - Completely independent of Apple's `chronod` security signing requirements, allowing local ad-hoc developer builds to enjoy full desktop widget telemetry without an Apple Developer certificate.
+   - Includes real-time portfolio score, bipolar log gauge, interactive sparkline chart, index chips, manual refresh (`SYNC`), and persistent desktop coordinates.
+3. **App Bundle & WidgetKit Container Resolution**:
+   - Fixed host app `Info.plist` to include `CFBundleVersion: 1.0`, `CFBundleDisplayName`, and removed `LSUIElement` so LaunchServices and `chronod` recognize `MarketWearIsland.app` as a legitimate interactive application.
+   - Linked `Contents/Extensions` alongside `Contents/PlugIns` for universal ExtensionKit discovery.
+4. **Headless Daemon Lifecycle**:
    - Spawns via `./start_headless_bridge.sh` running `:desktop:runHeadlessBridge`.
    - `MarketWearKmpRepository.ensureBridgeDaemonRunning()` automatically boots the daemon if loopback is unresponsive.
    - Exposes `/intent?code=REFRESH`, `/intent?code=TOGGLE_MODE`, and scenario triggers.

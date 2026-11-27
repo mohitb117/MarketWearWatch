@@ -76,7 +76,7 @@ private fun startIslandBridgeServer(viewModel: DesktopMarketViewModel): Pair<Cor
 
                     val targetState = if (code == "REFRESH") {
                         runBlocking(Dispatchers.IO) {
-                            viewModel.refreshLive(RefreshPolicy.FORCE_CORE_QUOTES)
+                            viewModel.refreshLive(RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO)
                         }
                     } else {
                         val desktopIntent = when (code) {

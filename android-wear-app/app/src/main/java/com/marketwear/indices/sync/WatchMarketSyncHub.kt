@@ -7,16 +7,16 @@ import com.marketwear.indices.data.MarketRepository
 import com.marketwear.indices.data.WatchPortfolioSelectionStore
 import com.marketwear.indices.notification.WatchLiveNotificationManager
 import com.marketwear.indices.tile.MarketWearPortfolioTileService
+import com.marketwear.shared.ui.MarketDashboardState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
  * Single Source of Truth Reactive Dispatcher for Wear OS.
- * Observes the Room database [MarketRepository.quotesFlow] and [WatchPortfolioSelectionStore]
+ * Observes the repository's single authoritative [MarketRepository.dashboardFlow]
  * to automatically and simultaneously synchronize all on-wrist presentation modalities:
  *  1. Complications (S&P 500, Nasdaq 100, Dual Glance, Portfolio Score)
  *  2. Wear OS Carousel Tile ([MarketWearPortfolioTileService])
@@ -27,31 +27,19 @@ import kotlinx.coroutines.launch
 class WatchMarketSyncHub(
     private val context: Context,
     private val repository: MarketRepository,
-    private val selectionStore: WatchPortfolioSelectionStore,
+    private val selectionStore: WatchPortfolioSelectionStore? = null,
     private val liveNotificationManager: WatchLiveNotificationManager,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
     init {
         scope.launch {
-            combine(
-                repository.quotesFlow,
-                selectionStore.disabledHoldingIds,
-                selectionStore.customWeights
-            ) { quotes, disabledIds, customWeights ->
-                Triple(quotes, disabledIds, customWeights)
-            }.distinctUntilChanged().collect { (quotes, disabledIds, customWeights) ->
-                if (quotes.isNotEmpty()) {
-                    dispatchToAllModalities(quotes, disabledIds, customWeights)
-                }
+            repository.dashboardFlow.collect { dashboard ->
+                dispatchToAllModalities(dashboard)
             }
         }
     }
 
-    private fun dispatchToAllModalities(
-        quotes: List<IndexQuote>,
-        disabledIds: Set<String>,
-        customWeights: Map<String, Double>
-    ) {
+    private fun dispatchToAllModalities(dashboard: MarketDashboardState) {
         // 1. Wear Complications
         try {
             MarketSyncWorker.triggerComplicationUpdates(context)
@@ -66,13 +54,9 @@ class WatchMarketSyncHub(
             // Ignored if Tile service is uninstalled/inactive
         }
 
-        // 3. Ongoing Wrist Notification & OngoingActivity
+        // 3. Ongoing Wrist Notification & OngoingActivity (driven directly by the single unified dashboard flow)
         try {
-            liveNotificationManager.showOrUpdateFromQuotes(
-                quotes = quotes,
-                disabledHoldingIds = disabledIds,
-                customWeights = customWeights
-            )
+            liveNotificationManager.showOrUpdateFromDashboard(dashboard)
         } catch (_: Exception) {
             // Ignored if notifications disabled
         }

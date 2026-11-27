@@ -6,19 +6,18 @@ import com.marketwear.mobile.data.MobileMarketRepository
 import com.marketwear.mobile.data.PortfolioSelectionStore
 import com.marketwear.mobile.notification.PortfolioLiveNotificationManager
 import com.marketwear.mobile.widget.MarketGlanceWidget
-import com.marketwear.shared.model.MarketSnapshot
+import com.marketwear.shared.ui.MarketDashboardState
 import com.marketwear.shared.ui.LiveNotificationPreference
 import com.marketwear.shared.ui.SyncUrgency
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /**
  * Process-wide Single Source of Truth Reactive Dispatcher for Android Mobile.
- * Observes [MobileMarketRepository.snapshotFlow] and automatically coordinates:
+ * Observes [MobileMarketRepository.dashboardFlow] and automatically coordinates:
  *  1. Android 16 Live Notifications (or legacy ongoing progress bar notifications).
  *  2. Android Glance AppWidget updates on the home screen.
  *  3. Bidirectional Wearable Data Layer synchronization to the paired Pixel Watch.
@@ -36,12 +35,10 @@ class PhoneMarketSyncHub(
     private var lastSyncedQuotes: List<com.marketwear.shared.model.IndexQuote> = emptyList()
 
     init {
-        // 1. Reactive observation of the Single Source of Truth snapshot
+        // 1. Reactive observation of the Single Source of Truth unified dashboard flow
         scope.launch {
-            repository.snapshotFlow.collect { snapshot ->
-                if (snapshot.quotes.isNotEmpty()) {
-                    dispatchSnapshotToModalities(snapshot)
-                }
+            repository.dashboardFlow.collect { dashboard ->
+                dispatchDashboardToModalities(dashboard)
             }
         }
 
@@ -50,10 +47,7 @@ class PhoneMarketSyncHub(
             selectionStore.liveNotificationPreference.drop(1).collect { preference ->
                 when (preference) {
                     LiveNotificationPreference.ACTIVE -> {
-                        val snapshot = repository.snapshotFlow.value
-                        if (snapshot.quotes.isNotEmpty()) {
-                            dispatchNotification(snapshot)
-                        }
+                        dispatchNotification(repository.dashboardFlow.value)
                     }
                     LiveNotificationPreference.PAUSED -> {
                         liveNotificationManager.dismiss()
@@ -62,28 +56,20 @@ class PhoneMarketSyncHub(
             }
         }
 
-        // 3. Reactive observation of notification display modes (Expansion & Weight Mode)
+        // 3. Reactive observation of notification expansion mode changes
         scope.launch {
-            combine(
-                selectionStore.notificationExpansionMode,
-                selectionStore.weightMode
-            ) { expansionMode, weightMode ->
-                expansionMode to weightMode
-            }.drop(1).collect {
-                val snapshot = repository.snapshotFlow.value
-                if (snapshot.quotes.isNotEmpty() &&
-                    selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE
-                ) {
-                    dispatchNotification(snapshot)
+            selectionStore.notificationExpansionMode.drop(1).collect {
+                if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
+                    dispatchNotification(repository.dashboardFlow.value)
                 }
             }
         }
     }
 
-    private fun dispatchSnapshotToModalities(snapshot: MarketSnapshot) {
-        // A. Live Notification
+    private fun dispatchDashboardToModalities(dashboard: MarketDashboardState) {
+        // A. Live Notification (driven directly by the pre-computed liveUpdateSpec from the repository)
         if (selectionStore.liveNotificationPreference.value == LiveNotificationPreference.ACTIVE) {
-            dispatchNotification(snapshot)
+            dispatchNotification(dashboard)
         }
 
         // B. Glance AppWidget (Home Screen)
@@ -96,7 +82,8 @@ class PhoneMarketSyncHub(
         }
 
         // C. Paired Watch Sync via Wearable Data Layer (deduplicated)
-        if (snapshot.quotes != lastSyncedQuotes) {
+        val snapshot = repository.snapshotFlow.value
+        if (snapshot.quotes.isNotEmpty() && snapshot.quotes != lastSyncedQuotes) {
             lastSyncedQuotes = snapshot.quotes
             scope.launch {
                 syncManager.syncQuotesToWatch(
@@ -108,13 +95,10 @@ class PhoneMarketSyncHub(
         }
     }
 
-    private fun dispatchNotification(snapshot: MarketSnapshot) {
+    private fun dispatchNotification(dashboard: MarketDashboardState) {
         try {
-            liveNotificationManager.showOrUpdateFromQuotes(
-                quotes = snapshot.quotes,
-                weightMode = selectionStore.weightMode.value,
-                disabledHoldingIds = snapshot.disabledHoldingIds,
-                customWeights = snapshot.customWeights,
+            liveNotificationManager.showOrUpdate(
+                spec = dashboard.portfolioState.liveUpdateSpec,
                 expansionMode = selectionStore.notificationExpansionMode.value
             )
         } catch (_: Exception) {

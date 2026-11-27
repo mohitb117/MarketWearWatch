@@ -120,7 +120,7 @@ class DesktopMarketViewModel(
         store.accept(intent)
     }
 
-    suspend fun refreshLive(policy: RefreshPolicy = RefreshPolicy.FORCE_CORE_QUOTES): DesktopMarketUiState {
+    suspend fun refreshLive(policy: RefreshPolicy = RefreshPolicy.FORCE_ALL_INCLUDING_PORTFOLIO): DesktopMarketUiState {
         val deferred = CompletableDeferred<DesktopMarketUiState>()
         synchronized(refreshWaiters) {
             refreshWaiters.add(deferred)

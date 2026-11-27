@@ -56,8 +56,14 @@ class MarketViewModel(
         name = "WearMarketStore",
         initialDisabledHoldingIds = selectionStore.disabledHoldingIds.value,
         initialCustomWeights = selectionStore.customWeights.value,
+        initialWeightMode = selectionStore.weightMode.value,
         onRecomputeLocalQuotes = { existingQuotes, disabledIds, customWeights ->
-            recomputeWithCachedIntraday(existingQuotes, disabledIds, customWeights)
+            if (existingQuotes.any { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL } &&
+                disabledIds.isEmpty() && customWeights.isEmpty()) {
+                existingQuotes
+            } else {
+                recomputeWithCachedIntraday(existingQuotes, disabledIds, customWeights)
+            }
         },
         onPersistPortfolioConfig = { disabledIds, customWeights, updatedQuotes ->
             selectionStore.setDisabledHoldings(disabledIds)
@@ -111,14 +117,7 @@ class MarketViewModel(
         }
         viewModelScope.launch {
             store.states.collect { state ->
-                if (state.quotes.isNotEmpty()) {
-                    liveNotificationManager.showOrUpdateFromQuotes(
-                        quotes = state.quotes,
-                        weightMode = state.weightMode,
-                        disabledHoldingIds = state.disabledHoldingIds,
-                        customWeights = state.customWeights
-                    )
-                }
+                selectionStore.setWeightMode(state.weightMode)
             }
         }
         // Initial silent load if Room DB cache is stale or empty
