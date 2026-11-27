@@ -47,14 +47,16 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
     <string>6.0</string>
     <key>CFBundleName</key>
     <string>MarketWearIsland</string>
+    <key>CFBundleDisplayName</key>
+    <string>MarketWear Island</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>LSUIElement</key>
-    <true/>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
@@ -117,7 +119,7 @@ cat > "$WIDGET_CONTENTS/Info.plist" << 'EOF'
         <string>MacOSX</string>
     </array>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>1.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSExtension</key>
@@ -129,6 +131,8 @@ cat > "$WIDGET_CONTENTS/Info.plist" << 'EOF'
 </plist>
 EOF
 
+ln -sfn PlugIns "$CONTENTS/Extensions"
+
 ENTITLEMENTS="$ROOT_DIR/macosApp/Resources/Widget.entitlements"
 xattr -cr "$WIDGET_BUNDLE"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "$WIDGET_BUNDLE"
@@ -138,6 +142,7 @@ codesign --force --sign - "$APP_BUNDLE"
 echo "Installing $APP_NAME to /Applications/..."
 rm -rf "/Applications/${APP_NAME}.app"
 cp -R "$APP_BUNDLE" "/Applications/${APP_NAME}.app"
+ln -sfn PlugIns "/Applications/${APP_NAME}.app/Contents/Extensions"
 xattr -cr "/Applications/${APP_NAME}.app"
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "/Applications/${APP_NAME}.app/Contents/PlugIns/${WIDGET_NAME}.appex"
 codesign --force --sign - "/Applications/${APP_NAME}.app"

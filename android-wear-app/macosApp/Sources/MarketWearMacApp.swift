@@ -18,6 +18,7 @@ enum IslandActionCode: String {
     case scenarioDefault = "SCENARIO_DEFAULT"
     case scenarioBull = "SCENARIO_BULL"
     case scenarioBear = "SCENARIO_BEAR"
+    case toggleDesktopWidget = "TOGGLE_DESKTOP_WIDGET"
     case quitApp = "QUIT_APP"
 }
 
@@ -97,6 +98,12 @@ final class MarketWearMacViewModel: ObservableObject {
     @Published var pinState: IslandPinState = .autoHover
     @Published var notchMetrics: NotchMetrics = .detect()
     @Published private(set) var isSyncing: Bool = false
+    @Published var isDesktopWidgetVisible: Bool = {
+        if UserDefaults.standard.object(forKey: "isDesktopWidgetVisible") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "isDesktopWidgetVisible")
+    }()
 
     private let repository = MarketWearKmpRepository()
     private var timerCancellable: AnyCancellable?
@@ -110,6 +117,10 @@ final class MarketWearMacViewModel: ObservableObject {
             }
     }
 
+    func toggleDesktopWidget() {
+        AppDelegate.sharedDesktopWidget?.toggleVisibility()
+    }
+
     func refreshNotchMetrics() {
         let updated = NotchMetrics.detect()
         if updated != notchMetrics {
@@ -120,6 +131,10 @@ final class MarketWearMacViewModel: ObservableObject {
     func sendIntent(_ action: IslandActionCode) {
         if action == .quitApp {
             NSApplication.shared.terminate(nil)
+            return
+        }
+        if action == .toggleDesktopWidget {
+            toggleDesktopWidget()
             return
         }
         Task {
@@ -345,9 +360,10 @@ struct DynamicIslandDeskView: View {
                     HStack(spacing: 6) {
                         modeToggleButton(p: p)
                         pinBadgeButton()
+                        desktopWidgetToggleButton()
                         quitButton()
                     }
-                    .frame(width: sideEarWidth, alignment: .trailing)
+                    .frame(width: sideEarWidth + 30, alignment: .trailing)
                 }
             } else {
                 HStack {
@@ -362,6 +378,7 @@ struct DynamicIslandDeskView: View {
                     Spacer()
                     modeToggleButton(p: p)
                     pinBadgeButton()
+                    desktopWidgetToggleButton()
                     quitButton()
                 }
                 .padding(.horizontal, metrics.shoulderRadius + 12)
@@ -424,11 +441,28 @@ struct DynamicIslandDeskView: View {
                 intentChip("Bull", .scenarioBull)
                 intentChip("Bear", .scenarioBear)
                 intentChip("Reset %", .resetWeights)
+                intentChip(vm.isDesktopWidgetVisible ? "Hide Desk" : "Desk Widget", .toggleDesktopWidget)
                 Spacer()
                 intentChip(vm.isSyncing ? "Syncing..." : "Sync", .refreshLive, emphasis: .primary)
                 intentChip("Quit", .quitApp, emphasis: .destructive)
             }
         }
+    }
+
+    private func desktopWidgetToggleButton() -> some View {
+        Button(action: { vm.toggleDesktopWidget() }) {
+            Text(vm.isDesktopWidgetVisible ? "DESK" : "+DESK")
+                .font(ObsidianTheme.microLabel)
+                .foregroundStyle(vm.isDesktopWidgetVisible ? ObsidianTheme.primary : ObsidianTheme.onSurfaceVariant)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    vm.isDesktopWidgetVisible ? ObsidianTheme.primaryContainer : ObsidianTheme.surfaceContainer,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Toggle floating desktop widget")
     }
 
     private func modeToggleButton(p: KmpPortfolioCardState) -> some View {
@@ -639,8 +673,174 @@ final class NotchIslandPanelController {
     }
 }
 
+private struct DesktopWidgetContainer: View {
+    @ObservedObject var vm: MarketWearMacViewModel
+    let onClose: () -> Void
+
+    var body: some View {
+        let p = vm.dashboard.portfolioState
+        let isPositive = p.activeQuote.percentChange >= 0
+        let series = p.primarySparkline
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 6) {
+                Circle()
+                    .fill(isPositive ? ObsidianTheme.positive : ObsidianTheme.negative)
+                    .frame(width: 7, height: 7)
+                Text("PORTFOLIO")
+                    .font(ObsidianTheme.microLabel)
+                    .foregroundStyle(ObsidianTheme.primary)
+                Text("\(p.enabledHoldingsCount)/\(p.totalHoldingsCount)")
+                    .font(ObsidianTheme.microLabel)
+                    .foregroundStyle(ObsidianTheme.onSurfaceVariant)
+                Spacer()
+                DeltaPill(text: p.liveUpdateSpec.shortCriticalText, trend: SignalTrend(delta: p.activeQuote.percentChange))
+                Button(action: onClose) {
+                    Text("✕")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(ObsidianTheme.onSurfaceVariant)
+                        .padding(4)
+                        .background(ObsidianTheme.surfaceContainer, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Hide Desktop Widget (toggle back from Menu Bar or Notch)")
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(String(format: "%.2f", p.activeQuote.price))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(ObsidianTheme.onSurface)
+
+                Spacer()
+
+                Button(action: { vm.sendIntent(.refreshLive) }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(vm.isSyncing ? "SYNCING" : "SYNC")
+                            .font(ObsidianTheme.microLabel)
+                    }
+                    .foregroundStyle(ObsidianTheme.primary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(ObsidianTheme.primaryContainer, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            BipolarLogGaugeView(
+                spec: p.liveUpdateSpec,
+                height: 5,
+                scaleVisibility: .hidden
+            )
+
+            if !series.isEmpty {
+                InteractivePortfolioIslandChart(portfolio: p, scrub: $vm.scrubSelection)
+                    .frame(height: 54)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(vm.dashboard.indices.prefix(2)) { idxQuote in
+                    HStack(spacing: 4) {
+                        Text(idxQuote.symbol)
+                            .font(ObsidianTheme.microLabel)
+                            .foregroundStyle(ObsidianTheme.primary)
+                        Text(idxQuote.formattedPrice)
+                            .font(ObsidianTheme.tabularSmall)
+                            .monospacedDigit()
+                            .foregroundStyle(ObsidianTheme.onSurface)
+                        DeltaPill(text: idxQuote.formattedPercent, trend: SignalTrend(delta: idxQuote.percentChange))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(ObsidianTheme.surface, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(ObsidianTheme.outlineVariant, lineWidth: 1))
+                }
+                Spacer()
+            }
+        }
+        .padding(14)
+        .frame(width: 330, height: 185)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(ObsidianTheme.background.opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(ObsidianTheme.outlineVariant, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
+    }
+}
+
+@MainActor
+final class DesktopWidgetPanelController {
+    let panel: NSPanel
+    private let vm: MarketWearMacViewModel
+
+    init(vm: MarketWearMacViewModel) {
+        self.vm = vm
+
+        let initialX = UserDefaults.standard.double(forKey: "desktopWidgetX")
+        let initialY = UserDefaults.standard.double(forKey: "desktopWidgetY")
+        let mainScreen = NSScreen.main?.visibleFrame ?? NSRect(x: 100, y: 100, width: 1400, height: 900)
+        let w: CGFloat = 330
+        let h: CGFloat = 185
+        let x = initialX > 0 ? initialX : (mainScreen.maxX - w - 40)
+        let y = initialY > 0 ? initialY : (mainScreen.maxY - h - 60)
+        let frame = NSRect(x: x, y: y, width: w, height: h)
+
+        let panel = NSPanel(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        self.panel = panel
+
+        let rootView = DesktopWidgetContainer(vm: vm, onClose: { [weak self] in
+            self?.toggleVisibility(false)
+        })
+        panel.contentView = NSHostingView(rootView: rootView)
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: panel,
+            queue: .main
+        ) { [weak panel] _ in
+            guard let frame = panel?.frame else { return }
+            UserDefaults.standard.set(frame.origin.x, forKey: "desktopWidgetX")
+            UserDefaults.standard.set(frame.origin.y, forKey: "desktopWidgetY")
+        }
+
+        if vm.isDesktopWidgetVisible {
+            panel.orderFrontRegardless()
+        }
+    }
+
+    func toggleVisibility(_ visible: Bool? = nil) {
+        let target = visible ?? !vm.isDesktopWidgetVisible
+        vm.isDesktopWidgetVisible = target
+        UserDefaults.standard.set(target, forKey: "isDesktopWidgetVisible")
+        if target {
+            panel.orderFrontRegardless()
+        } else {
+            panel.orderOut(nil)
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var sharedController: NotchIslandPanelController?
+    static var sharedDesktopWidget: DesktopWidgetPanelController?
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         Self.sharedController?.expandFromDock()
@@ -653,6 +853,7 @@ struct MarketWearMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var vm: MarketWearMacViewModel
     private let notchController: NotchIslandPanelController
+    private let desktopWidgetController: DesktopWidgetPanelController
 
     init() {
         let sharedVm = MarketWearMacViewModel()
@@ -660,6 +861,9 @@ struct MarketWearMacApp: App {
         let controller = NotchIslandPanelController(vm: sharedVm)
         notchController = controller
         AppDelegate.sharedController = controller
+        let deskController = DesktopWidgetPanelController(vm: sharedVm)
+        desktopWidgetController = deskController
+        AppDelegate.sharedDesktopWidget = deskController
     }
 
     var body: some Scene {
