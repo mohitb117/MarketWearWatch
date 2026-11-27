@@ -32,6 +32,52 @@ enum IslandPinState {
     case pinnedExpanded
 }
 
+/// Clean facade delegating all networking, rate-limiting, serialization, and calculations to the KMP layer.
+@MainActor
+final class MarketWearKmpRepository {
+    private let baseURL = URL(string: "http://127.0.0.1:49172")!
+    private var isStartingDaemon = false
+
+    func fetchLatestState() async -> KmpDashboardState? {
+        var req = URLRequest(url: baseURL.appending(path: "state"))
+        req.timeoutInterval = 2.0
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           (resp as? HTTPURLResponse)?.statusCode == 200,
+           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
+            return decoded
+        }
+        return nil
+    }
+
+    func dispatchAction(_ action: IslandActionCode) async -> KmpDashboardState? {
+        let url = baseURL.appending(path: "intent").appending(queryItems: [URLQueryItem(name: "code", value: action.rawValue)])
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10.0
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           (resp as? HTTPURLResponse)?.statusCode == 200,
+           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
+            return decoded
+        }
+        return nil
+    }
+
+    func ensureBridgeDaemonRunning() {
+        guard !isStartingDaemon else { return }
+        isStartingDaemon = true
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            defer {
+                DispatchQueue.main.async { self?.isStartingDaemon = false }
+            }
+            let script = "/Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/start_headless_bridge.sh"
+            guard FileManager.default.isExecutableFile(atPath: script) else { return }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/bash")
+            p.arguments = [script]
+            try? p.run()
+        }
+    }
+}
+
 @MainActor
 final class MarketWearMacViewModel: ObservableObject {
     @Published private(set) var dashboard: KmpDashboardState = .loadLatestOrFallback()
@@ -42,12 +88,12 @@ final class MarketWearMacViewModel: ObservableObject {
     @Published var notchMetrics: NotchMetrics = .detect()
     @Published private(set) var isSyncing: Bool = false
 
+    private let repository = MarketWearKmpRepository()
     private var timerCancellable: AnyCancellable?
-    private let baseURL = URL(string: "http://127.0.0.1:49172")!
 
     init() {
         Task { await pollLatestState() }
-        timerCancellable = Timer.publish(every: 0.75, on: .main, in: .common)
+        timerCancellable = Timer.publish(every: 1.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 Task { await self?.pollLatestState() }
@@ -70,16 +116,15 @@ final class MarketWearMacViewModel: ObservableObject {
             if action == .refreshLive {
                 isSyncing = true
             }
-            let url = baseURL.appending(path: "intent").appending(queryItems: [URLQueryItem(name: "code", value: action.rawValue)])
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 6.0
-            if let (data, _) = try? await URLSession.shared.data(for: req),
-               let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
-                dashboard = decoded
+            if let state = await repository.dispatchAction(action) {
+                dashboard = state
                 connectionStatus = .liveLoopback
-                saveToDisk(decoded)
+                saveToDisk(state)
             } else {
-                await handleOfflineIntent(action)
+                repository.ensureBridgeDaemonRunning()
+                let cached = KmpDashboardState.loadLatestOrFallback()
+                dashboard = cached
+                connectionStatus = .localCache
             }
             if action == .refreshLive {
                 isSyncing = false
@@ -87,287 +132,24 @@ final class MarketWearMacViewModel: ObservableObject {
         }
     }
 
-    private func handleOfflineIntent(_ action: IslandActionCode) async {
-        if action == .refreshLive {
-            if let liveState = await fetchDirectLiveState() {
-                dashboard = liveState
-                connectionStatus = .standaloneLive
-                saveToDisk(liveState)
-                return
+    private func pollLatestState() async {
+        if let state = await repository.fetchLatestState() {
+            dashboard = state
+            connectionStatus = .liveLoopback
+            saveToDisk(state)
+        } else {
+            let cached = KmpDashboardState.loadLatestOrFallback()
+            if cached.latestUpdatedMillis != dashboard.latestUpdatedMillis {
+                dashboard = cached
             }
+            connectionStatus = .localCache
         }
-        let simulated = simulateLocalAction(action, current: dashboard)
-        dashboard = simulated
-        connectionStatus = .localCache
-        saveToDisk(simulated)
     }
 
     private func saveToDisk(_ state: KmpDashboardState) {
         if let encoded = try? JSONEncoder().encode(state) {
             try? encoded.write(to: URL(fileURLWithPath: "/tmp/marketwear_island_state.json"))
             WidgetCenter.shared.reloadAllTimelines()
-        }
-    }
-
-    private func fetchDirectLiveState() async -> KmpDashboardState? {
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=15m&range=1d") else { return nil }
-        var req = URLRequest(url: url)
-        req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        req.timeoutInterval = 4.0
-        guard let (data, resp) = try? await URLSession.shared.data(for: req),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let chart = json["chart"] as? [String: Any],
-              let result = (chart["result"] as? [[String: Any]])?.first,
-              let meta = result["meta"] as? [String: Any],
-              let regularPrice = meta["regularMarketPrice"] as? Double,
-              let previousClose = (meta["previousClose"] as? Double) ?? (meta["chartPreviousClose"] as? Double),
-              previousClose > 0 else {
-            return nil
-        }
-
-        let indicators = result["indicators"] as? [String: Any]
-        let quoteList = indicators?["quote"] as? [[String: Any]]
-        let rawCloses = (quoteList?.first?["close"] as? [Any])?.compactMap { $0 as? Double } ?? [regularPrice]
-        let cleanCloses = rawCloses.isEmpty ? [regularPrice] : rawCloses
-
-        let pctChange = ((regularPrice - previousClose) / previousClose) * 100.0
-        let score = 100.0 + pctChange
-        let sparkline = cleanCloses.map { 100.0 + ((($0 - previousClose) / previousClose) * 100.0) }
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-
-        let isPositive = pctChange >= 0
-        let accentArgb: Int32 = isPositive ? Int32(bitPattern: 0xFF10B981) : Int32(bitPattern: 0xFFEF4444)
-        let prog = min(max(Int(500 + (pctChange * 50)), 0), 1000)
-        let segLen = abs(prog - 500)
-
-        let pQuote = KmpIndexQuote(
-            symbol: "PORTFOLIO",
-            name: "Portfolio Score",
-            price: round(score * 100) / 100,
-            change: round(pctChange * 100) / 100,
-            percentChange: round(pctChange * 100) / 100,
-            dayHigh: sparkline.max() ?? score,
-            dayLow: sparkline.min() ?? score,
-            lastUpdated: now,
-            category: "PORTFOLIO",
-            sparkline: sparkline
-        )
-
-        let rawQuote = KmpIndexQuote(
-            symbol: "PORTFOLIO",
-            name: "Portfolio Score",
-            price: round((100.0 + (pctChange * 0.5941)) * 100) / 100,
-            change: round((pctChange * 0.5941) * 100) / 100,
-            percentChange: round((pctChange * 0.5941) * 100) / 100,
-            dayHigh: 100.0 + (((sparkline.max() ?? score) - 100.0) * 0.5941),
-            dayLow: 100.0 + (((sparkline.min() ?? score) - 100.0) * 0.5941),
-            lastUpdated: now,
-            category: "PORTFOLIO",
-            sparkline: sparkline.map { 100.0 + (($0 - 100.0) * 0.5941) }
-        )
-
-        let card = KmpPortfolioCardState(
-            weightMode: dashboard.portfolioState.weightMode,
-            activeQuote: dashboard.portfolioState.weightMode == "RAW" ? rawQuote : pQuote,
-            secondaryQuote: dashboard.portfolioState.weightMode == "RAW" ? pQuote : rawQuote,
-            trendDirection: isPositive ? "POSITIVE" : "NEGATIVE",
-            watchTitleLabel: dashboard.portfolioState.weightMode == "RAW" ? "Portfolio (Raw)" : "Portfolio (100%)",
-            mobileModePillLabel: dashboard.portfolioState.weightMode == "RAW" ? "Raw (59.41%)" : "Normalized (100%)",
-            mobileSecondarySummary: String(format: "Raw (59.41%%): %.2f (%+.2f%%)", rawQuote.price, rawQuote.percentChange),
-            mobileRangeSummary: String(format: "Range: %.2f – %.2f", sparkline.min() ?? score, sparkline.max() ?? score),
-            primarySparkline: sparkline,
-            secondarySparkline: rawQuote.sparkline,
-            enabledHoldingsCount: dashboard.portfolioState.enabledHoldingsCount,
-            totalHoldingsCount: 37,
-            liveUpdateSpec: KmpLiveUpdateSpec(
-                progress: prog,
-                maxProgress: 1000,
-                baselinePoint: 500,
-                trendDirection: isPositive ? "POSITIVE" : "NEGATIVE",
-                accentArgb: accentArgb,
-                segments: [
-                    KmpBipolarSegment(length: min(prog, 500), argbColor: Int32(bitPattern: 0xFF141C27)),
-                    KmpBipolarSegment(length: segLen, argbColor: accentArgb),
-                    KmpBipolarSegment(length: max(0, 1000 - max(prog, 500) - (prog < 500 ? segLen : 0)), argbColor: Int32(bitPattern: 0xFF141C27))
-                ],
-                shortCriticalText: String(format: "%+.2f%%", pctChange),
-                title: String(format: "Portfolio %.2f (%+.2f%%)", score, pctChange),
-                subtitle: "\(dashboard.portfolioState.enabledHoldingsCount)/37 holdings · Yahoo Finance Live"
-            )
-        )
-
-        let spx = KmpIndexQuote(
-            symbol: "SPX",
-            name: "S&P 500",
-            price: round(regularPrice * 1000) / 100,
-            change: round((regularPrice - previousClose) * 1000) / 100,
-            percentChange: round(pctChange * 100) / 100,
-            dayHigh: round(regularPrice * 1.005 * 1000) / 100,
-            dayLow: round(regularPrice * 0.995 * 1000) / 100,
-            lastUpdated: now,
-            category: "INDEX",
-            sparkline: cleanCloses
-        )
-
-        return KmpDashboardState(
-            portfolioState: card,
-            indices: [spx] + dashboard.indices.dropFirst(),
-            sectors: dashboard.sectors,
-            latestUpdatedMillis: now
-        )
-    }
-
-    private func simulateLocalAction(_ action: IslandActionCode, current: KmpDashboardState) -> KmpDashboardState {
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        var p = current.portfolioState
-        let indices = current.indices
-        let sectors = current.sectors
-
-        switch action {
-        case .toggleMode:
-            let isNowRaw = p.weightMode == "NORMALIZED_100"
-            let newMode = isNowRaw ? "RAW" : "NORMALIZED_100"
-            let active = isNowRaw ? p.secondaryQuote : p.activeQuote
-            let secondary = isNowRaw ? p.activeQuote : p.secondaryQuote
-            p = KmpPortfolioCardState(
-                weightMode: newMode,
-                activeQuote: active,
-                secondaryQuote: secondary,
-                trendDirection: active.percentChange >= 0 ? "POSITIVE" : "NEGATIVE",
-                watchTitleLabel: isNowRaw ? "Portfolio (Raw)" : "Portfolio (100%)",
-                mobileModePillLabel: isNowRaw ? "Raw (59.41%)" : "Normalized (100%)",
-                mobileSecondarySummary: isNowRaw ? String(format: "Normalized (100%%): %.2f (%+.2f%%)", secondary.price, secondary.percentChange) : String(format: "Raw (59.41%%): %.2f (%+.2f%%)", secondary.price, secondary.percentChange),
-                mobileRangeSummary: p.mobileRangeSummary,
-                primarySparkline: isNowRaw ? p.secondarySparkline : p.primarySparkline,
-                secondarySparkline: isNowRaw ? p.primarySparkline : p.secondarySparkline,
-                enabledHoldingsCount: p.enabledHoldingsCount,
-                totalHoldingsCount: p.totalHoldingsCount,
-                liveUpdateSpec: p.liveUpdateSpec
-            )
-
-        case .scenarioBull:
-            let series = [100.0, 100.28, 100.62, 100.95, 101.24, 101.58, 101.72, 101.85]
-            let q = KmpIndexQuote(symbol: "PORTFOLIO", name: "Portfolio Score", price: 101.85, change: 1.85, percentChange: 1.85, dayHigh: 101.85, dayLow: 100.0, lastUpdated: now, category: "PORTFOLIO", sparkline: series)
-            p = KmpPortfolioCardState(
-                weightMode: p.weightMode,
-                activeQuote: q,
-                secondaryQuote: KmpIndexQuote(symbol: "PORTFOLIO", name: "Portfolio Score", price: 101.10, change: 1.10, percentChange: 1.10, dayHigh: 101.10, dayLow: 100.0, lastUpdated: now, category: "PORTFOLIO", sparkline: series),
-                trendDirection: "POSITIVE",
-                watchTitleLabel: p.watchTitleLabel,
-                mobileModePillLabel: p.mobileModePillLabel,
-                mobileSecondarySummary: "Raw (59.41%): 101.10 (+1.10%)",
-                mobileRangeSummary: "Range: 100.00 – 101.85",
-                primarySparkline: series,
-                secondarySparkline: series,
-                enabledHoldingsCount: p.enabledHoldingsCount,
-                totalHoldingsCount: p.totalHoldingsCount,
-                liveUpdateSpec: KmpLiveUpdateSpec(
-                    progress: 685, maxProgress: 1000, baselinePoint: 500, trendDirection: "POSITIVE",
-                    accentArgb: Int32(bitPattern: 0xFF10B981),
-                    segments: [
-                        KmpBipolarSegment(length: 500, argbColor: Int32(bitPattern: 0xFF141C27)),
-                        KmpBipolarSegment(length: 185, argbColor: Int32(bitPattern: 0xFF10B981)),
-                        KmpBipolarSegment(length: 315, argbColor: Int32(bitPattern: 0xFF141C27))
-                    ],
-                    shortCriticalText: "+1.85%",
-                    title: "Portfolio 101.85 (+1.85%)",
-                    subtitle: "\(p.enabledHoldingsCount)/37 holdings · Bull Rally"
-                )
-            )
-
-        case .scenarioBear:
-            let series = [100.0, 99.82, 99.54, 99.21, 98.96, 98.78, 98.55, 98.66]
-            let q = KmpIndexQuote(symbol: "PORTFOLIO", name: "Portfolio Score", price: 98.66, change: -1.34, percentChange: -1.34, dayHigh: 100.0, dayLow: 98.55, lastUpdated: now, category: "PORTFOLIO", sparkline: series)
-            p = KmpPortfolioCardState(
-                weightMode: p.weightMode,
-                activeQuote: q,
-                secondaryQuote: KmpIndexQuote(symbol: "PORTFOLIO", name: "Portfolio Score", price: 99.20, change: -0.80, percentChange: -0.80, dayHigh: 100.0, dayLow: 99.10, lastUpdated: now, category: "PORTFOLIO", sparkline: series),
-                trendDirection: "NEGATIVE",
-                watchTitleLabel: p.watchTitleLabel,
-                mobileModePillLabel: p.mobileModePillLabel,
-                mobileSecondarySummary: "Raw (59.41%): 99.20 (-0.80%)",
-                mobileRangeSummary: "Range: 98.55 – 100.00",
-                primarySparkline: series,
-                secondarySparkline: series,
-                enabledHoldingsCount: p.enabledHoldingsCount,
-                totalHoldingsCount: p.totalHoldingsCount,
-                liveUpdateSpec: KmpLiveUpdateSpec(
-                    progress: 366, maxProgress: 1000, baselinePoint: 500, trendDirection: "NEGATIVE",
-                    accentArgb: Int32(bitPattern: 0xFFEF4444),
-                    segments: [
-                        KmpBipolarSegment(length: 366, argbColor: Int32(bitPattern: 0xFF141C27)),
-                        KmpBipolarSegment(length: 134, argbColor: Int32(bitPattern: 0xFFEF4444)),
-                        KmpBipolarSegment(length: 500, argbColor: Int32(bitPattern: 0xFF141C27))
-                    ],
-                    shortCriticalText: "-1.34%",
-                    title: "Portfolio 98.66 (-1.34%)",
-                    subtitle: "\(p.enabledHoldingsCount)/37 holdings · Bear Pullback"
-                )
-            )
-
-        case .scenarioDefault, .resetWeights:
-            return KmpDashboardState.fallback
-
-        case .presetTop10:
-            p = KmpPortfolioCardState(
-                weightMode: p.weightMode,
-                activeQuote: p.activeQuote,
-                secondaryQuote: p.secondaryQuote,
-                trendDirection: p.trendDirection,
-                watchTitleLabel: p.watchTitleLabel,
-                mobileModePillLabel: p.mobileModePillLabel,
-                mobileSecondarySummary: p.mobileSecondarySummary,
-                mobileRangeSummary: p.mobileRangeSummary,
-                primarySparkline: p.primarySparkline,
-                secondarySparkline: p.secondarySparkline,
-                enabledHoldingsCount: 10,
-                totalHoldingsCount: 37,
-                liveUpdateSpec: p.liveUpdateSpec
-            )
-
-        case .presetAll37:
-            p = KmpPortfolioCardState(
-                weightMode: p.weightMode,
-                activeQuote: p.activeQuote,
-                secondaryQuote: p.secondaryQuote,
-                trendDirection: p.trendDirection,
-                watchTitleLabel: p.watchTitleLabel,
-                mobileModePillLabel: p.mobileModePillLabel,
-                mobileSecondarySummary: p.mobileSecondarySummary,
-                mobileRangeSummary: p.mobileRangeSummary,
-                primarySparkline: p.primarySparkline,
-                secondarySparkline: p.secondarySparkline,
-                enabledHoldingsCount: 37,
-                totalHoldingsCount: 37,
-                liveUpdateSpec: p.liveUpdateSpec
-            )
-
-        case .refreshLive, .quitApp:
-            break
-        }
-
-        return KmpDashboardState(
-            portfolioState: p,
-            indices: indices,
-            sectors: sectors,
-            latestUpdatedMillis: now
-        )
-    }
-
-    private func pollLatestState() async {
-        var req = URLRequest(url: baseURL.appending(path: "state"))
-        req.timeoutInterval = 2.0
-        if let (data, _) = try? await URLSession.shared.data(for: req),
-           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
-            dashboard = decoded
-            connectionStatus = .liveLoopback
-            saveToDisk(decoded)
-        } else {
-            let cached = KmpDashboardState.loadLatestOrFallback()
-            if cached.latestUpdatedMillis != dashboard.latestUpdatedMillis {
-                dashboard = cached
-            }
         }
     }
 }
