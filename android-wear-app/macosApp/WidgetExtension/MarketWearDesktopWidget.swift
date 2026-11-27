@@ -66,8 +66,8 @@ struct MarketWearDesktopWidget: Widget {
         StaticConfiguration(kind: kind, provider: MarketWearTimelineProvider()) { entry in
             MarketWearDesktopWidgetView(entry: entry)
         }
-        .configurationDisplayName("MarketWear Portfolio Score")
-        .description("Obsidian Terminal center-origin portfolio telemetry powered by KMP :shared.")
+        .configurationDisplayName("MarketWear Watch Portfolio")
+        .description("MarketWear Watch and Desktop obsidian telemetry powered by KMP.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

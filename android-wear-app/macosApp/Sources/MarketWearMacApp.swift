@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import WidgetKit
 
 enum IslandSurfaceMode {
     case collapsedNotch
@@ -17,16 +18,74 @@ enum IslandActionCode: String {
     case scenarioDefault = "SCENARIO_DEFAULT"
     case scenarioBull = "SCENARIO_BULL"
     case scenarioBear = "SCENARIO_BEAR"
+    case quitApp = "QUIT_APP"
 }
 
 enum BridgeConnectionStatus: String {
     case liveLoopback = "KMP SYNC"
-    case localCache = "LOCAL SEED"
+    case standaloneLive = "YAHOO SYNC"
+    case localCache = "LOCAL SIM"
 }
 
 enum IslandPinState {
     case autoHover
     case pinnedExpanded
+}
+
+/// Clean facade delegating all networking, rate-limiting, serialization, and calculations to the KMP layer.
+@MainActor
+final class MarketWearKmpRepository {
+    private let baseURL = URL(string: "http://127.0.0.1:49172")!
+    private var isStartingDaemon = false
+
+    func fetchLatestState() async -> KmpDashboardState? {
+        var req = URLRequest(url: baseURL.appending(path: "state"))
+        req.timeoutInterval = 2.0
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           (resp as? HTTPURLResponse)?.statusCode == 200,
+           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
+            return decoded
+        }
+        return nil
+    }
+
+    func dispatchAction(_ action: IslandActionCode) async -> KmpDashboardState? {
+        let url = baseURL.appending(path: "intent").appending(queryItems: [URLQueryItem(name: "code", value: action.rawValue)])
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10.0
+        if let (data, resp) = try? await URLSession.shared.data(for: req),
+           (resp as? HTTPURLResponse)?.statusCode == 200,
+           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
+            return decoded
+        }
+        return nil
+    }
+
+    func ensureBridgeDaemonRunning() {
+        guard !isStartingDaemon else { return }
+        isStartingDaemon = true
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            defer {
+                DispatchQueue.main.async { self?.isStartingDaemon = false }
+            }
+            let bundledScript = Bundle.main.path(forResource: "start_headless_bridge", ofType: "sh")
+            let repoScript = "/Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/start_headless_bridge.sh"
+            let targetScript: String?
+            if let bundled = bundledScript, FileManager.default.fileExists(atPath: bundled) {
+                targetScript = bundled
+            } else if FileManager.default.fileExists(atPath: repoScript) {
+                targetScript = repoScript
+            } else {
+                targetScript = nil
+            }
+
+            guard let script = targetScript else { return }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/bin/bash")
+            p.arguments = [script]
+            try? p.run()
+        }
+    }
 }
 
 @MainActor
@@ -37,13 +96,14 @@ final class MarketWearMacViewModel: ObservableObject {
     @Published var islandMode: IslandSurfaceMode = .collapsedNotch
     @Published var pinState: IslandPinState = .autoHover
     @Published var notchMetrics: NotchMetrics = .detect()
+    @Published private(set) var isSyncing: Bool = false
 
+    private let repository = MarketWearKmpRepository()
     private var timerCancellable: AnyCancellable?
-    private let baseURL = URL(string: "http://127.0.0.1:49172")!
 
     init() {
         Task { await pollLatestState() }
-        timerCancellable = Timer.publish(every: 0.75, on: .main, in: .common)
+        timerCancellable = Timer.publish(every: 1.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 Task { await self?.pollLatestState() }
@@ -58,34 +118,48 @@ final class MarketWearMacViewModel: ObservableObject {
     }
 
     func sendIntent(_ action: IslandActionCode) {
+        if action == .quitApp {
+            NSApplication.shared.terminate(nil)
+            return
+        }
         Task {
-            let url = baseURL.appending(path: "intent").appending(queryItems: [URLQueryItem(name: "code", value: action.rawValue)])
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 1.0
-            if let (data, _) = try? await URLSession.shared.data(for: req),
-               let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
-                dashboard = decoded
+            if action == .refreshLive {
+                isSyncing = true
+            }
+            if let state = await repository.dispatchAction(action) {
+                dashboard = state
                 connectionStatus = .liveLoopback
+                saveToDisk(state)
             } else {
-                dashboard = KmpDashboardState.loadLatestOrFallback()
+                repository.ensureBridgeDaemonRunning()
+                let cached = KmpDashboardState.loadLatestOrFallback()
+                dashboard = cached
                 connectionStatus = .localCache
+            }
+            if action == .refreshLive {
+                isSyncing = false
             }
         }
     }
 
     private func pollLatestState() async {
-        var req = URLRequest(url: baseURL.appending(path: "state"))
-        req.timeoutInterval = 0.6
-        if let (data, _) = try? await URLSession.shared.data(for: req),
-           let decoded = try? JSONDecoder().decode(KmpDashboardState.self, from: data) {
-            dashboard = decoded
+        if let state = await repository.fetchLatestState() {
+            dashboard = state
             connectionStatus = .liveLoopback
+            saveToDisk(state)
         } else {
             let cached = KmpDashboardState.loadLatestOrFallback()
             if cached.latestUpdatedMillis != dashboard.latestUpdatedMillis {
                 dashboard = cached
             }
             connectionStatus = .localCache
+        }
+    }
+
+    private func saveToDisk(_ state: KmpDashboardState) {
+        if let encoded = try? JSONEncoder().encode(state) {
+            try? encoded.write(to: URL(fileURLWithPath: "/tmp/marketwear_island_state.json"))
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 }
@@ -137,6 +211,12 @@ struct DynamicIslandDeskView: View {
             .background(ObsidianTheme.notchHardwareBlack, in: shell)
             .overlay(shell.stroke(ObsidianTheme.outlineVariant.opacity(0.45), lineWidth: 1))
             .clipShape(shell)
+            .contextMenu {
+                Button("Collapse Island") { onTogglePin?() }
+                Button("Sync Live Data") { vm.sendIntent(.refreshLive) }
+                Divider()
+                Button("Quit MarketWear Island") { NSApplication.shared.terminate(nil) }
+            }
 
         case .menuBarPopover:
             VStack(alignment: .leading, spacing: 10) {
@@ -151,6 +231,7 @@ struct DynamicIslandDeskView: View {
                     }
                     Spacer()
                     modeToggleButton(p: p)
+                    quitButton()
                 }
                 expandedTelemetryBody(p: p, activePrice: activePrice, activePct: activePct, isPositive: isPositive)
             }
@@ -226,6 +307,15 @@ struct DynamicIslandDeskView: View {
         .onTapGesture {
             onTogglePin?()
         }
+        .contextMenu {
+            Button("Toggle Pin") { onTogglePin?() }
+            Button(p.weightMode == "NORMALIZED_100" ? "Switch to Raw Mode" : "Switch to 100% Mode") {
+                vm.sendIntent(.toggleMode)
+            }
+            Button("Sync Live Data") { vm.sendIntent(.refreshLive) }
+            Divider()
+            Button("Quit MarketWear Island") { NSApplication.shared.terminate(nil) }
+        }
     }
 
     private func expandedNotchHeader(
@@ -233,7 +323,7 @@ struct DynamicIslandDeskView: View {
         metrics: NotchMetrics,
         isPositive: Bool
     ) -> some View {
-        let sideEarWidth: CGFloat = (metrics.presence == .hardwareNotch) ? 132 : 0
+        let sideEarWidth: CGFloat = (metrics.presence == .hardwareNotch) ? 154 : 0
         return Group {
             if metrics.presence == .hardwareNotch {
                 HStack(spacing: 0) {
@@ -255,6 +345,7 @@ struct DynamicIslandDeskView: View {
                     HStack(spacing: 6) {
                         modeToggleButton(p: p)
                         pinBadgeButton()
+                        quitButton()
                     }
                     .frame(width: sideEarWidth, alignment: .trailing)
                 }
@@ -271,6 +362,7 @@ struct DynamicIslandDeskView: View {
                     Spacer()
                     modeToggleButton(p: p)
                     pinBadgeButton()
+                    quitButton()
                 }
                 .padding(.horizontal, metrics.shoulderRadius + 12)
             }
@@ -333,7 +425,8 @@ struct DynamicIslandDeskView: View {
                 intentChip("Bear", .scenarioBear)
                 intentChip("Reset %", .resetWeights)
                 Spacer()
-                intentChip("Sync", .refreshLive, emphasis: .primary)
+                intentChip(vm.isSyncing ? "Syncing..." : "Sync", .refreshLive, emphasis: .primary)
+                intentChip("Quit", .quitApp, emphasis: .destructive)
             }
         }
     }
@@ -365,19 +458,47 @@ struct DynamicIslandDeskView: View {
         .buttonStyle(.plain)
     }
 
+    private func quitButton() -> some View {
+        Button(action: { NSApplication.shared.terminate(nil) }) {
+            Text("✕")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ObsidianTheme.negative)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(ObsidianTheme.surfaceContainer, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Quit MarketWear Island")
+    }
+
     private enum ChipEmphasis {
         case standard
         case primary
+        case destructive
     }
 
     private func intentChip(_ label: String, _ action: IslandActionCode, emphasis: ChipEmphasis = .standard) -> some View {
         Button(action: { vm.sendIntent(action) }) {
+            let textColor: Color = {
+                switch emphasis {
+                case .primary: return ObsidianTheme.onPrimaryContainer
+                case .destructive: return ObsidianTheme.negative
+                case .standard: return ObsidianTheme.onSurfaceVariant
+                }
+            }()
+            let bgColor: Color = {
+                switch emphasis {
+                case .primary: return ObsidianTheme.primaryContainer
+                case .destructive: return ObsidianTheme.surfaceContainer
+                case .standard: return ObsidianTheme.surfaceContainer
+                }
+            }()
             Text(label)
                 .font(ObsidianTheme.microLabel)
-                .foregroundStyle(emphasis == .primary ? ObsidianTheme.onPrimaryContainer : ObsidianTheme.onSurfaceVariant)
+                .foregroundStyle(textColor)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(emphasis == .primary ? ObsidianTheme.primaryContainer : ObsidianTheme.surfaceContainer, in: Capsule())
+                .background(bgColor, in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -391,11 +512,11 @@ struct DynamicIslandDeskView: View {
             return NSSize(width: w, height: metrics.notchHeight)
         case .expandedIsland:
             let w: CGFloat = (metrics.presence == .hardwareNotch)
-                ? max(492, metrics.notchWidth + 280)
-                : 452
+                ? max(520, metrics.notchWidth + 300)
+                : 460
             return NSSize(width: w, height: metrics.notchHeight + expandedBodyHeight)
         case .menuBarPopover:
-            return NSSize(width: 430, height: 320)
+            return NSSize(width: 440, height: 326)
         }
     }
 }
@@ -472,6 +593,12 @@ final class NotchIslandPanelController {
         }
     }
 
+    func expandFromDock() {
+        hoverExitTask?.cancel()
+        vm.pinState = .pinnedExpanded
+        transition(to: .expandedIsland)
+    }
+
     private func togglePin() {
         hoverExitTask?.cancel()
         switch vm.pinState {
@@ -512,21 +639,33 @@ final class NotchIslandPanelController {
     }
 }
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    static var sharedController: NotchIslandPanelController?
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Self.sharedController?.expandFromDock()
+        return true
+    }
+}
+
 @main
 struct MarketWearMacApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var vm: MarketWearMacViewModel
     private let notchController: NotchIslandPanelController
 
     init() {
         let sharedVm = MarketWearMacViewModel()
         _vm = StateObject(wrappedValue: sharedVm)
-        notchController = NotchIslandPanelController(vm: sharedVm)
+        let controller = NotchIslandPanelController(vm: sharedVm)
+        notchController = controller
+        AppDelegate.sharedController = controller
     }
 
     var body: some Scene {
         MenuBarExtra {
             DynamicIslandDeskView(vm: vm, mode: .menuBarPopover)
-                .frame(width: 430, height: 320)
+                .frame(width: 440, height: 326)
         } label: {
             let p = vm.dashboard.portfolioState
             Text("PORT \(String(format: "%.2f", p.activeQuote.price)) \(p.liveUpdateSpec.shortCriticalText)")
