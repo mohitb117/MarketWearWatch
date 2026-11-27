@@ -43,7 +43,8 @@ class PortfolioLiveNotificationManager(private val context: Context) {
     companion object {
         private const val LEGACY_CHANNEL_V2 = "marketwear_portfolio_live_v2"
         private const val LEGACY_CHANNEL_V3 = "marketwear_portfolio_live_v3"
-        const val CHANNEL_ID = "marketwear_portfolio_live"
+        private const val LEGACY_CHANNEL_V4 = "marketwear_portfolio_live"
+        const val CHANNEL_ID = "marketwear_portfolio_live_v5"
         const val CHANNEL_NAME = "Portfolio Live Updates"
         const val NOTIFICATION_ID = 1001
         private const val REQUEST_CODE_LAUNCH = 1001
@@ -245,12 +246,18 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             )
         }
 
+        val chipText = spec.shortCriticalText.take(7)
+        val now = System.currentTimeMillis()
+
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(arrowIconRes)
             .setContentTitle(titleText)
             .setContentText(bodyText)
             .setSubText(spec.subText)
-            .setShortCriticalText(spec.shortCriticalText)
+            .setShortCriticalText(chipText)
+            .setWhen(now)
+            .setShowWhen(true)
+            .setProgress(spec.maxProgress, spec.progress, false)
             .setColor(spec.accentArgb)
             .setOngoing(true)
             .setLocalOnly(true)
@@ -267,6 +274,17 @@ class PortfolioLiveNotificationManager(private val context: Context) {
                     toggleExpansionIntent
                 ).build()
             )
+
+        val chipExtras = android.os.Bundle().apply {
+            putCharSequence("android.shortCriticalText", chipText)
+            putString("android.ongoingActivityNoti.chipExpandedText", chipText)
+            putString("android.ongoingActivityNoti.chipText", chipText)
+            putString("android.ongoingActivityPrimaryInfo", chipText)
+            putString("android.ongoingActivityNoti.nowbarPrimaryInfo", chipText)
+            putBoolean("android.ongoingActivityNoti.show", true)
+            putInt("android.ongoingActivityNoti.style", 1)
+        }
+        builder.addExtras(chipExtras)
 
         if (expansionMode == NotificationExpansionMode.EXPANDED) {
             builder.addAction(
@@ -302,12 +320,17 @@ class PortfolioLiveNotificationManager(private val context: Context) {
             )
         }
 
+        val chipText = spec.shortCriticalText.take(7)
+        val now = System.currentTimeMillis()
+
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(arrowIconRes)
             .setContentTitle(titleText)
             .setContentText(bodyText)
             .setSubText(spec.subText)
             .setProgress(spec.maxProgress, spec.progress, false)
+            .setWhen(now)
+            .setShowWhen(true)
             .setColor(spec.accentArgb)
             .setOngoing(true)
             .setLocalOnly(true)
@@ -322,6 +345,17 @@ class PortfolioLiveNotificationManager(private val context: Context) {
                     toggleExpansionIntent
                 ).build()
             )
+
+        val chipExtras = android.os.Bundle().apply {
+            putCharSequence("android.shortCriticalText", chipText)
+            putString("android.ongoingActivityNoti.chipExpandedText", chipText)
+            putString("android.ongoingActivityNoti.chipText", chipText)
+            putString("android.ongoingActivityPrimaryInfo", chipText)
+            putString("android.ongoingActivityNoti.nowbarPrimaryInfo", chipText)
+            putBoolean("android.ongoingActivityNoti.show", true)
+            putInt("android.ongoingActivityNoti.style", 1)
+        }
+        builder.addExtras(chipExtras)
 
         if (expansionMode == NotificationExpansionMode.EXPANDED) {
             builder.setStyle(
@@ -346,6 +380,7 @@ class PortfolioLiveNotificationManager(private val context: Context) {
         runCatching {
             notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V2)
             notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V3)
+            notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_V4)
         }
         val existing = notificationManager.getNotificationChannel(CHANNEL_ID)
         if (existing != null) return
