@@ -19,6 +19,7 @@ TMPDIR=/tmp xcrun swiftc \
   -target arm64-apple-macos14.0 \
   -framework AppKit \
   -framework SwiftUI \
+  -framework WidgetKit \
   -o "$MACOS_BIN" \
   "$ROOT_DIR/macosApp/Sources/MarketWearSharedViews.swift" \
   "$ROOT_DIR/macosApp/Sources/MarketWearMacApp.swift"
@@ -48,6 +49,8 @@ cat > "$CONTENTS/Info.plist" << 'EOF'
     <dict>
         <key>NSAllowsLocalNetworking</key>
         <true/>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
     </dict>
 </dict>
 </plist>
@@ -67,7 +70,17 @@ TMPDIR=/tmp xcrun swiftc \
 
 codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null || true
 
-echo "Built $APP_BUNDLE cleanly."
+echo "Installing $APP_NAME to /Applications/..."
+rm -rf "/Applications/${APP_NAME}.app"
+cp -R "$APP_BUNDLE" "/Applications/${APP_NAME}.app"
+
+if ! defaults read com.apple.dock persistent-apps 2>/dev/null | grep -q "MarketWearIsland.app"; then
+  echo "Adding MarketWearIsland to macOS Dock..."
+  defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>/Applications/MarketWearIsland.app</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>"
+  killall Dock 2>/dev/null || true
+fi
+
+echo "Built and installed cleanly."
 if [[ "${1:-}" != "--build-only" ]]; then
-  open -a "$APP_BUNDLE"
+  open -a "/Applications/${APP_NAME}.app"
 fi
