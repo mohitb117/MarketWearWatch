@@ -25,13 +25,15 @@ flowchart TD
 
     subgraph WearOS [":app — Google Pixel Watch 4"]
         RoomDB[("Room Database\n(Authoritative Wrist SSOT)")]
+        WatchDashFlow["StateFlow<MarketDashboardState>\n(dashboardFlow in Persistence)"]
         WatchHub["WatchMarketSyncHub"]
         Complications["Watch Face Complications\n(S&P 500, Nasdaq, Dual, Score)"]
         CarouselTile["Wear OS Carousel Tile\n(MarketWearPortfolioTileService)"]
         WristNotif["Ongoing Wrist Notification\n(WatchLiveNotificationManager)"]
         WearCompose["Wear Compose App\n(MarketViewModel)"]
 
-        RoomDB --> WatchHub
+        RoomDB --> WatchDashFlow
+        WatchDashFlow --> WatchHub
         WatchHub --> Complications
         WatchHub --> CarouselTile
         WatchHub --> WristNotif
@@ -40,12 +42,14 @@ flowchart TD
 
     subgraph MobileDevice [":mobile — Android Phone Companion"]
         PhoneRepo["MobileMarketRepository\n(Authoritative Phone SSOT)"]
+        PhoneDashFlow["StateFlow<MarketDashboardState>\n(dashboardFlow in Persistence)"]
         PhoneHub["PhoneMarketSyncHub"]
         PhoneUI["Phone App Dashboard\n(MobileMarketStore MVI)"]
         GlanceWidget["Android Glance Widget\n(Home Screen)"]
         LiveActivity["Android 16 Live Activity\n(Status Bar & Lock Screen)"]
 
-        PhoneRepo --> PhoneHub
+        PhoneRepo --> PhoneDashFlow
+        PhoneDashFlow --> PhoneHub
         PhoneHub --> PhoneUI
         PhoneHub --> GlanceWidget
         PhoneHub --> LiveActivity

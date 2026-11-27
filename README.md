@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph PhoneDevice ["Phone Single Source of Truth (:mobile)"]
         PhoneRepo["MobileMarketRepository\n(Authoritative Commit Point)"]
-        PhoneSnapshot["StateFlow<MarketSnapshot>\n(Immutable Unified State)"]
+        PhoneSnapshot["StateFlow<MarketDashboardState>\n(Unified dashboardFlow in Persistence)"]
         PhoneHub["PhoneMarketSyncHub\n(Reactive Coordinator)"]
 
         PhoneRepo --> PhoneSnapshot
@@ -46,15 +46,15 @@ flowchart TD
         GlanceWidget["Android Glance Home Screen Widget\n(MarketGlanceWidget)"]
         DataLayerTx["DataClient Sync to Watch\n(WearDataSyncManager)"]
 
-        PhoneHub -->|StateFlow| PhoneUI
-        PhoneHub -->|showOrUpdate| LiveNotif
-        PhoneHub -->|updateAll| GlanceWidget
+        PhoneHub -->|dashboardFlow| PhoneUI
+        PhoneHub -->|showOrUpdateFromDashboard| LiveNotif
+        PhoneHub -->|updateAll with dashboard| GlanceWidget
         PhoneHub -->|putDataItem| DataLayerTx
     end
 
     subgraph WatchDevice ["Watch Single Source of Truth (:app)"]
         RoomDB[("Room Database (IndexQuoteEntity)\n(Authoritative Commit Point)")]
-        WatchFlow["Flow<List<IndexQuote>>\n(Room Dao Observation)"]
+        WatchFlow["StateFlow<MarketDashboardState>\n(Unified dashboardFlow in Persistence)"]
         WatchHub["WatchMarketSyncHub\n(Reactive Coordinator)"]
 
         RoomDB --> WatchFlow
@@ -67,8 +67,8 @@ flowchart TD
         WatchTile["Wear OS Carousel Tile Widget\n(MarketWearPortfolioTileService)"]
         Complications["Watch Face Complications\n(S&P 500, Nasdaq, Dual, Score)"]
 
-        WatchHub -->|StateFlow| WatchUI
-        WatchHub -->|showOrUpdate| WatchNotif
+        WatchHub -->|dashboardFlow| WatchUI
+        WatchHub -->|showOrUpdateFromDashboard| WatchNotif
         WatchHub -->|requestUpdate| WatchTile
         WatchHub -->|triggerComplications| Complications
     end

@@ -90,20 +90,8 @@ class WatchLiveNotificationManager(private val context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    fun showOrUpdateFromQuotes(
-        quotes: List<IndexQuote>,
-        weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
-        disabledHoldingIds: Set<String> = emptySet(),
-        customWeights: Map<String, Double> = emptyMap()
-    ) {
+    fun showOrUpdateFromDashboard(dashboard: com.marketwear.shared.ui.MarketDashboardState) {
         if (!isNotificationPermissionGranted()) return
-        if (quotes.none { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }) return
-        val dashboard = MarketUiStateBuilder.buildDashboardState(
-            quotes = quotes,
-            weightMode = weightMode,
-            disabledHoldingIds = disabledHoldingIds,
-            customWeights = customWeights
-        )
         val cardState = dashboard.portfolioState
         val spx = dashboard.indices.firstOrNull { it.symbol == "SPX" || it.symbol == "^GSPC" }
         val ndx = dashboard.indices.firstOrNull { it.symbol == "NDX" || it.symbol == "^NDX" }
@@ -136,6 +124,23 @@ class WatchLiveNotificationManager(private val context: Context) {
             badgeBitmap = renderWatchBadgeBitmap(cardState),
             expandedCardBitmap = renderWatchExpandedCardBitmap(cardState, spx, ndx)
         )
+    }
+
+    fun showOrUpdateFromQuotes(
+        quotes: List<IndexQuote>,
+        weightMode: PortfolioWeightMode = PortfolioWeightMode.NORMALIZED_100,
+        disabledHoldingIds: Set<String> = emptySet(),
+        customWeights: Map<String, Double> = emptyMap()
+    ) {
+        if (!isNotificationPermissionGranted()) return
+        if (quotes.none { it.symbol == PortfolioRegistry.PORTFOLIO_SYMBOL }) return
+        val dashboard = MarketUiStateBuilder.buildDashboardState(
+            quotes = quotes,
+            weightMode = weightMode,
+            disabledHoldingIds = disabledHoldingIds,
+            customWeights = customWeights
+        )
+        showOrUpdateFromDashboard(dashboard)
     }
 
     fun showOrUpdate(spec: PortfolioLiveUpdateSpec) {

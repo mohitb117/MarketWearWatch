@@ -118,14 +118,6 @@ class MarketViewModel(
         viewModelScope.launch {
             store.states.collect { state ->
                 selectionStore.setWeightMode(state.weightMode)
-                if (state.quotes.isNotEmpty()) {
-                    liveNotificationManager.showOrUpdateFromQuotes(
-                        quotes = state.quotes,
-                        weightMode = state.weightMode,
-                        disabledHoldingIds = state.disabledHoldingIds,
-                        customWeights = state.customWeights
-                    )
-                }
             }
         }
         // Initial silent load if Room DB cache is stale or empty

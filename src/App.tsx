@@ -12,6 +12,7 @@ import {
 } from './components/PixelWatch4Simulator';
 import { MarketGlanceWidgetPreview } from './components/MarketGlanceWidgetPreview';
 import { MobileCompanionPreview } from './components/MobileCompanionPreview';
+import { MacDesktopPreview } from './components/MacDesktopPreview';
 import { MarketIndicesStrip } from './components/MarketIndicesStrip';
 import { ComplicationConfigurator } from './components/ComplicationConfigurator';
 import { AndroidCodeViewer } from './components/AndroidCodeViewer';
@@ -30,11 +31,12 @@ import {
   CheckCircle2,
   BatteryCharging,
   Network,
+  Monitor,
 } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'simulator' | 'architecture' | 'config' | 'source' | 'install'>('simulator');
-  const [activeSurface, setActiveSurface] = useState<'watch' | 'widget' | 'mobile'>('watch');
+  const [activeSurface, setActiveSurface] = useState<'watch' | 'widget' | 'mobile' | 'desktop'>('watch');
 
   const [marketState, setMarketState] = useState<MarketState>(() => {
     const { status, statusText } = calculateMarketStatus();
@@ -358,6 +360,18 @@ export default function App() {
                   <Smartphone className="w-3.5 h-3.5" />
                   <span>Phone Companion</span>
                 </button>
+
+                <button
+                  onClick={() => setActiveSurface('desktop')}
+                  className={`px-3.5 py-2 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeSurface === 'desktop'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>macOS Desktop &amp; Notch</span>
+                </button>
               </div>
             </div>
 
@@ -371,7 +385,7 @@ export default function App() {
                   </span>
                   <span className="text-neutral-500 hidden sm:inline">|</span>
                   <span className="text-xs text-neutral-300 font-medium">
-                    1 Trigger &rarr; 7 Synchronized Modalities
+                    1 Trigger &rarr; 9 Synchronized Modalities
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400 bg-neutral-950/80 px-2.5 py-1 rounded-lg border border-neutral-800">
@@ -381,7 +395,7 @@ export default function App() {
                 </div>
               </div>
               <p className="text-xs text-neutral-400 mt-2 leading-relaxed">
-                Every UI modality operates as a passive observer of an authoritative local data stream. A single market price update immediately and simultaneously synchronizes the <strong>Phone App</strong>, <strong>Android 16 Live Activity</strong>, <strong>Glance Widget</strong>, <strong>Wear OS App</strong>, <strong>Watch Carousel Tile</strong>, <strong>Wrist Ongoing Notification</strong>, and <strong>Watch Face Complications</strong> with zero race conditions.
+                Every UI modality operates as a pure passive observer of an authoritative local data stream. A single market price update immediately and simultaneously synchronizes the <strong>Phone App</strong>, <strong>Android 16 Live Activity</strong>, <strong>Glance Widget</strong>, <strong>Wear OS App</strong>, <strong>Watch Carousel Tile</strong>, <strong>Wrist Ongoing Notification</strong>, <strong>Watch Face Complications</strong>, <strong>macOS Dynamic Island Notch</strong>, and <strong>macOS Floating Desktop Widget</strong> with zero race conditions.
               </p>
             </div>
 
@@ -420,6 +434,17 @@ export default function App() {
                     lastSyncedText={timeString}
                     onRefreshAndSync={handleRefreshQuotes}
                   />
+                )}
+
+                {activeSurface === 'desktop' && (
+                  <div className="w-full">
+                    <MacDesktopPreview
+                      quotes={marketState.quotes}
+                      lastUpdatedText={timeString}
+                      onRefresh={handleRefreshQuotes}
+                      isRefreshing={isRefreshing}
+                    />
+                  </div>
                 )}
               </div>
 

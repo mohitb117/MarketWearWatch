@@ -14,7 +14,7 @@ const DIAGRAMS: DiagramSpec[] = [
   {
     id: 'ssot-pipeline',
     title: 'Single Source of Truth (SSOT) Multi-Surface Reactive Pipeline',
-    subtitle: 'A single authoritative data trigger synchronously updates all 7 presentation modalities across phone and watch with zero race conditions.',
+    subtitle: 'A single authoritative data trigger synchronously updates all 9 presentation modalities across phone, watch, and desktop with zero race conditions.',
     badge: 'Core Architecture',
     code: `flowchart TD
     subgraph TriggerSources ["Authoritative Data Ingest"]
@@ -25,7 +25,7 @@ const DIAGRAMS: DiagramSpec[] = [
 
     subgraph PhoneDevice ["Phone Single Source of Truth (:mobile)"]
         PhoneRepo["MobileMarketRepository\\n(Authoritative Commit Point)"]
-        PhoneSnapshot["StateFlow<MarketSnapshot>\\n(Immutable Unified State)"]
+        PhoneSnapshot["StateFlow<MarketDashboardState>\\n(dashboardFlow · Unified State)"]
         PhoneHub["PhoneMarketSyncHub\\n(Reactive Coordinator)"]
 
         PhoneRepo --> PhoneSnapshot
@@ -38,7 +38,7 @@ const DIAGRAMS: DiagramSpec[] = [
         GlanceWidget["Android Glance Home Screen Widget\\n(MarketGlanceWidget)"]
         DataLayerTx["DataClient Sync to Watch\\n(WearDataSyncManager)"]
 
-        PhoneHub -->|StateFlow| PhoneUI
+        PhoneHub -->|dashboardFlow| PhoneUI
         PhoneHub -->|showOrUpdate| LiveNotif
         PhoneHub -->|updateAll| GlanceWidget
         PhoneHub -->|putDataItem| DataLayerTx
@@ -46,7 +46,7 @@ const DIAGRAMS: DiagramSpec[] = [
 
     subgraph WatchDevice ["Watch Single Source of Truth (:app)"]
         RoomDB[("Room Database (IndexQuoteEntity)\\n(Authoritative Commit Point)")]
-        WatchFlow["Flow<List<IndexQuote>>\\n(Room Dao Observation)"]
+        WatchFlow["StateFlow<MarketDashboardState>\\n(dashboardFlow · Unified State)"]
         WatchHub["WatchMarketSyncHub\\n(Reactive Coordinator)"]
 
         RoomDB --> WatchFlow
@@ -59,10 +59,20 @@ const DIAGRAMS: DiagramSpec[] = [
         WatchTile["Wear OS Carousel Tile Widget\\n(MarketWearPortfolioTileService)"]
         Complications["Watch Face Complications\\n(S&P 500, Nasdaq, Dual, Score)"]
 
-        WatchHub -->|StateFlow| WatchUI
+        WatchHub -->|dashboardFlow| WatchUI
         WatchHub -->|showOrUpdate| WatchNotif
         WatchHub -->|requestUpdate| WatchTile
         WatchHub -->|triggerComplications| Complications
+    end
+
+    subgraph DesktopMac ["macOS Desktop SSOT (:desktop & macosApp)"]
+        KmpBridge["KMP Bridge Loopback Daemon\\n(Port 49172 · /state)"]
+        MacNotch["Dynamic Island Notch\\n(MarketWearIsland.app)"]
+        MacDeskWidget["Floating Desktop Widget\\n(DesktopWidgetPanelController)"]
+
+        NetFetch --> KmpBridge
+        KmpBridge -->|HTTP Stream| MacNotch
+        MacNotch --> MacDeskWidget
     end
 
     NetFetch --> PhoneRepo

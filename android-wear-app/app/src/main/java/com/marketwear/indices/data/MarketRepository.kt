@@ -13,10 +13,18 @@ import com.marketwear.shared.contracts.WearConstants
 import com.marketwear.shared.model.MarketRegistry
 import com.marketwear.shared.network.SharedMarketClient
 import com.marketwear.shared.platform.isUsMarketWindowActive
+import com.marketwear.shared.ui.MarketDashboardState
+import com.marketwear.shared.ui.MarketUiStateBuilder
 import com.marketwear.shared.ui.RefreshPolicy
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -38,6 +46,7 @@ class MarketRepository(
     private val messageClient = Wearable.getMessageClient(context)
     private val dataClient = Wearable.getDataClient(context)
     private val json = Json { ignoreUnknownKeys = true }
+    private val repoScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     val quotesFlow: Flow<List<IndexQuote>> = dao.getAllQuotesFlow().map { list ->
         if (list.isEmpty()) {
@@ -46,6 +55,34 @@ class MarketRepository(
             list.map { it.toDomainModel() }
         }
     }
+
+    /**
+     * Single Authoritative Unified Data Flow for Wear OS.
+     * Combines Room quotes with user portfolio preferences (weight mode, custom weights, disabled holdings)
+     * at the persistence layer, pre-computing the exact [MarketDashboardState] for all presentation modalities.
+     */
+    val dashboardFlow: StateFlow<MarketDashboardState> = combine(
+        quotesFlow,
+        selectionStore.weightMode,
+        selectionStore.disabledHoldingIds,
+        selectionStore.customWeights
+    ) { quotes, weightMode, disabledIds, customWeights ->
+        MarketUiStateBuilder.buildDashboardState(
+            quotes = quotes,
+            weightMode = weightMode,
+            disabledHoldingIds = disabledIds,
+            customWeights = customWeights
+        )
+    }.stateIn(
+        scope = repoScope,
+        started = SharingStarted.Eagerly,
+        initialValue = MarketUiStateBuilder.buildDashboardState(
+            quotes = MarketRegistry.getFallbackQuotes(),
+            weightMode = selectionStore.weightMode.value,
+            disabledHoldingIds = selectionStore.disabledHoldingIds.value,
+            customWeights = selectionStore.customWeights.value
+        )
+    )
 
     companion object {
         private const val ACTIVE_FRESHNESS_MS = 5 * 60 * 1000L       // 5 minutes during market hours
