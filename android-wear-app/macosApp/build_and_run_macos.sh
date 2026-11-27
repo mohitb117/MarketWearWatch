@@ -13,6 +13,10 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" /tmp/mw_swift_cache
 if [[ -f "$ROOT_DIR/macosApp/Resources/AppIcon.icns" ]]; then
   cp "$ROOT_DIR/macosApp/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 fi
+if [[ -f "$ROOT_DIR/start_headless_bridge.sh" ]]; then
+  cp "$ROOT_DIR/start_headless_bridge.sh" "$CONTENTS/Resources/start_headless_bridge.sh"
+  chmod +x "$CONTENTS/Resources/start_headless_bridge.sh"
+fi
 
 echo "Compiling $APP_NAME with Apple Swift against macOS SDK..."
 TMPDIR=/tmp xcrun swiftc \
@@ -141,6 +145,7 @@ codesign --force --sign - "/Applications/${APP_NAME}.app"
 # Register with LaunchServices & PluginKit so WidgetKit discovers the extension
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_NAME}.app"
 pluginkit -a "/Applications/${APP_NAME}.app/Contents/PlugIns/${WIDGET_NAME}.appex" 2>/dev/null || true
+sleep 1
 killall chronod 2>/dev/null || true
 killall NotificationCenter 2>/dev/null || true
 swift -e 'import AppKit; if let img = NSImage(contentsOfFile: "/Applications/MarketWearIsland.app/Contents/Resources/AppIcon.icns") { NSWorkspace.shared.setIcon(img, forFile: "/Applications/MarketWearIsland.app") }' 2>/dev/null || true

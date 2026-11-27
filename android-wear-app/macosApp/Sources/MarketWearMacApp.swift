@@ -68,8 +68,18 @@ final class MarketWearKmpRepository {
             defer {
                 DispatchQueue.main.async { self?.isStartingDaemon = false }
             }
-            let script = "/Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/start_headless_bridge.sh"
-            guard FileManager.default.isExecutableFile(atPath: script) else { return }
+            let bundledScript = Bundle.main.path(forResource: "start_headless_bridge", ofType: "sh")
+            let repoScript = "/Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/start_headless_bridge.sh"
+            let targetScript: String?
+            if let bundled = bundledScript, FileManager.default.fileExists(atPath: bundled) {
+                targetScript = bundled
+            } else if FileManager.default.fileExists(atPath: repoScript) {
+                targetScript = repoScript
+            } else {
+                targetScript = nil
+            }
+
+            guard let script = targetScript else { return }
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/bash")
             p.arguments = [script]

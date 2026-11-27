@@ -136,14 +136,65 @@ On Wear OS, Room Database (`IndexQuoteDao`) is the sole local source of truth:
 
 ---
 
+### 3.5 Desktop & macOS SSOT Architecture (`:desktop` & `macosApp`)
+
+To extend the Single Source of Truth to the desktop without duplicating networking, parsing, or portfolio calculation algorithms in Swift, MarketWear introduces a headless bridge daemon powered by `:shared` and `:desktop`:
+
+```mermaid
+flowchart TD
+    subgraph KMPCore [":shared Core Engine"]
+        SharedClient["SharedMarketClient\n(Ktor + Yahoo Finance)"]
+        PortfolioReg["PortfolioRegistry\n(37 Holdings & Sector Weights)"]
+        StateBuilder["MarketUiStateBuilder\n(Bipolar Log Gauge & Telemetry Specs)"]
+    end
+
+    subgraph DesktopDaemon [":desktop Headless / GUI Bridge (Port 49172)"]
+        DesktopVM["DesktopMarketViewModel\n(Reactive MVI StateFlow)"]
+        BridgeServer["HttpServer Loopback Daemon\n(/state, /intent)"]
+        DiskSnapshot[("/tmp/marketwear_island_state.json\nAtomic Atomic File Snapshot")]
+
+        SharedClient --> DesktopVM
+        PortfolioReg --> DesktopVM
+        DesktopVM --> StateBuilder
+        StateBuilder --> BridgeServer
+        StateBuilder --> DiskSnapshot
+    end
+
+    subgraph macOSNative ["macOS Native Shells (Pure Swift UI Observers)"]
+        IslandApp["MarketWearIsland.app\n(Hardware MacBook Notch & Menu Bar)"]
+        WidgetKitExt["MarketWearDesktopWidget.appex\n(Sandboxed macOS Desktop Widget)"]
+
+        BridgeServer -->|HTTP GET /state| IslandApp
+        BridgeServer -->|HTTP POST /intent| IslandApp
+        DiskSnapshot -->|Instant Offline Fallback| IslandApp
+        DiskSnapshot -->|App Sandbox File Read| WidgetKitExt
+        IslandApp -->|WidgetCenter.reloadAllTimelines| WidgetKitExt
+    end
+```
+
+#### Key Design Decisions for macOS:
+1. **Zero Swift Networking / Business Logic**:
+   - `MarketWearMacApp.swift` contains no `URLRequest` to Yahoo Finance, no custom JSON parsing dictionaries, and no manual portfolio math.
+   - All models conform to `KmpDashboardState` and `KmpPortfolioCardState`, directly decoded from the JSON emitted by `MarketUiStateBuilder`.
+2. **App Sandbox Compliance for WidgetKit**:
+   - Apple's `pkd` daemon strictly mandates `com.apple.security.app-sandbox = true` on all `.appex` extensions.
+   - [Widget.entitlements](file:///Users/mohitb117/workspaces/MarketWearWatch/android-wear-app/macosApp/Resources/Widget.entitlements) grants sandbox execution and temporary exception access to `/tmp/` and `/private/tmp/` for zero-latency local snapshot reads.
+   - Outer bundle code signing is configured to avoid recursive `--deep` flags that could overwrite the extension's sandbox entitlements.
+3. **Headless Daemon Lifecycle**:
+   - Spawns via `./start_headless_bridge.sh` running `:desktop:runHeadlessBridge`.
+   - `MarketWearKmpRepository.ensureBridgeDaemonRunning()` automatically boots the daemon if loopback is unresponsive.
+   - Exposes `/intent?code=REFRESH`, `/intent?code=TOGGLE_MODE`, and scenario triggers.
+
+---
+
 ## 4. Guarantees & Non-Functional Requirements
 
 | Metric | Target Guarantee | Verification Mechanism |
 | :--- | :--- | :--- |
-| **State Consistency** | 100% synchronized across all 7 presentation modalities | Unit tests & reactive Flow observation |
-| **Dispatch Latency** | $< 50\text{ms}$ process-local dispatch from ingest to all modalities | In-memory coroutine flows (`StateFlow` / Room `Flow`) |
+| **State Consistency** | 100% synchronized across all 9 presentation modalities (Watch Complications, Tile, Ongoing Notification, Watch UI, Phone UI, Glance Widget, Android 16 Live Activity, Desktop Notch Island, and Desktop Widget) | Unit tests, reactive StateFlow, Room observations, and KMP JSON bridge |
+| **Dispatch Latency** | $< 50\text{ms}$ process-local dispatch from ingest to all modalities | In-memory coroutine flows (`StateFlow` / Room `Flow` / Loopback HTTP) |
 | **Echo Loop Prevention** | Zero cyclic ping-pong syncs across Bluetooth | Quote payload equality deduplication check in `PhoneMarketSyncHub` |
-| **Battery Impact** | Zero redundant wakeups; strictly event-driven observation | Modalities wake only when data actually changes; complications remain offline Room reads |
+| **Battery & CPU Impact** | Zero redundant wakeups; strictly event-driven observation | Modalities wake only when data actually changes; complications remain offline Room reads |
 
 ---
 
@@ -151,6 +202,8 @@ On Wear OS, Room Database (`IndexQuoteDao`) is the sole local source of truth:
 
 - **Unit Tests**:
   - `MobileMarketStoreTest`: Verifies MVI store transitions upon external quote snapshot emissions.
+  - `DesktopMarketViewModelTest`: Verifies desktop scenario selection, weight mode toggling, and intent dispatches.
   - `SharedModuleTest` & `KoinModuleTest`: Verifies singleton registration of sync hubs.
 - **Integration Tests**:
-  - Full project compilation via `./gradlew test :app:assembleDebug :mobile:assembleDebug`.
+  - Full project compilation via `./gradlew :desktop:desktopTest :shared:testDebugUnitTest`.
+  - macOS bundle and widget verification via `pluginkit -m -v -i com.marketwear.macos.island.widget` and `codesign -d --entitlements`.
