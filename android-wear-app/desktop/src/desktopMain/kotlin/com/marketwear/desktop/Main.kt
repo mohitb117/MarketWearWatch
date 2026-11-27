@@ -114,23 +114,39 @@ private fun startIslandBridgeServer(viewModel: DesktopMarketViewModel): Pair<Cor
     return scope to server
 }
 
-fun main() = application {
-    val windowState = rememberWindowState(size = DpSize(1180.dp, 820.dp))
-    val viewModel = DesktopMarketViewModel(mainContext = Dispatchers.Main.immediate)
-    val (bridgeScope, bridgeServer) = startIslandBridgeServer(viewModel)
-
-    Window(
-        onCloseRequest = {
+fun main(args: Array<String>) {
+    if (args.contains("--headless") || System.getenv("MARKETWEAR_HEADLESS") == "1") {
+        println("Starting MarketWear Headless KMP Bridge Server...")
+        val viewModel = DesktopMarketViewModel(mainContext = Dispatchers.Default)
+        val (bridgeScope, bridgeServer) = startIslandBridgeServer(viewModel)
+        println("MarketWear KMP Bridge running on http://127.0.0.1:49172")
+        Runtime.getRuntime().addShutdownHook(Thread {
             bridgeServer?.stop(0)
             bridgeScope.cancel()
             viewModel.dispose()
-            exitApplication()
-        },
-        state = windowState,
-        title = "MarketWear — KMP Desktop Portfolio Score & Dynamic Island Sync"
-    ) {
-        MarketWearTheme {
-            DesktopDashboardScreen(viewModel = viewModel)
+        })
+        Thread.currentThread().join()
+        return
+    }
+
+    application {
+        val windowState = rememberWindowState(size = DpSize(1180.dp, 820.dp))
+        val viewModel = DesktopMarketViewModel(mainContext = Dispatchers.Main.immediate)
+        val (bridgeScope, bridgeServer) = startIslandBridgeServer(viewModel)
+
+        Window(
+            onCloseRequest = {
+                bridgeServer?.stop(0)
+                bridgeScope.cancel()
+                viewModel.dispose()
+                exitApplication()
+            },
+            state = windowState,
+            title = "MarketWear — KMP Desktop Portfolio Score & Dynamic Island Sync"
+        ) {
+            MarketWearTheme {
+                DesktopDashboardScreen(viewModel = viewModel)
+            }
         }
     }
 }

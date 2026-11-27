@@ -42,3 +42,15 @@ tasks.register<JavaExec>("runDesktop") {
     )
     mainClass.set("com.marketwear.desktop.MainKt")
 }
+
+tasks.register<JavaExec>("runHeadlessBridge") {
+    group = "application"
+    description = "Runs the headless MarketWear KMP bridge server for native macOS SwiftUI."
+    val desktopCompilation = kotlin.targets.getByName("desktop").compilations.getByName("main")
+    classpath(
+        desktopCompilation.output.allOutputs,
+        configurations.getByName("desktopRuntimeClasspath")
+    )
+    mainClass.set("com.marketwear.desktop.MainKt")
+    args("--headless")
+}
